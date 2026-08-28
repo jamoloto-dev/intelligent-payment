@@ -1,9 +1,7 @@
 """Order service API endpoints."""
-from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from shared.authentication.dependencies import get_current_user_token, require_admin, require_authenticated
-from shared.authentication.jwt import TokenPayload
-from shared.schemas.common import PaginatedResponse, UserRole
+
 from services.order_service.app.schemas.order import (
     OrderCreateRequest,
     OrderResponse,
@@ -11,6 +9,11 @@ from services.order_service.app.schemas.order import (
     OrderUpdateRequest,
 )
 from services.order_service.app.services.order_service import OrderService
+from shared.authentication.dependencies import (
+    require_authenticated,
+)
+from shared.authentication.jwt import TokenPayload
+from shared.schemas.common import PaginatedResponse, UserRole
 
 order_router = APIRouter(prefix="/orders", tags=["Orders"])
 
@@ -38,7 +41,7 @@ async def create_order(
 async def list_orders(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    status_filter: Optional[str] = Query(None, alias="status"),
+    status_filter: str | None = Query(None, alias="status"),
     current_user: TokenPayload = Depends(require_authenticated),
     service: OrderService = Depends(get_order_service),
 ):
@@ -98,7 +101,9 @@ async def cancel_order(
 ):
     """Cancel an active order and release inventory."""
     is_admin = current_user.role == UserRole.ADMIN.value
-    return await service.cancel_order(order_id=order_id, user_id=current_user.sub, is_admin=is_admin)
+    return await service.cancel_order(
+        order_id=order_id, user_id=current_user.sub, is_admin=is_admin
+    )
 
 
 @order_router.post("/{order_id}/status", response_model=OrderResponse)

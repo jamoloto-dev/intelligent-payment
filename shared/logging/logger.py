@@ -1,21 +1,33 @@
 """Structured JSON logging with security sanitization."""
+
 import contextvars
 import json
 import logging
-import re
 import sys
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 # Context variables for tracing across async execution
-request_id_ctx: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("request_id", default=None)
-user_id_ctx: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("user_id", default=None)
+request_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar(
+    "request_id", default=None
+)
+user_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVar("user_id", default=None)
 
 # Patterns for sensitive keys that must be redacted
 SENSITIVE_KEYS = {
-    "password", "password_hash", "token", "access_token", "jwt_secret",
-    "secret", "api_key", "stripe_secret_key", "webhook_secret",
-    "credit_card", "card_number", "cvv", "authorization"
+    "password",
+    "password_hash",
+    "token",
+    "access_token",
+    "jwt_secret",
+    "secret",
+    "api_key",
+    "stripe_secret_key",
+    "webhook_secret",
+    "credit_card",
+    "card_number",
+    "cvv",
+    "authorization",
 }
 
 REDACTED = "[REDACTED]"
@@ -42,14 +54,14 @@ def sanitize_data(data: Any) -> Any:
 
 class JSONFormatter(logging.Formatter):
     """Custom Formatter outputting structured JSON logs."""
-    
+
     def __init__(self, service_name: str):
         super().__init__()
         self.service_name = service_name
 
     def format(self, record: logging.LogRecord) -> str:
-        log_data: Dict[str, Any] = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+        log_data: dict[str, Any] = {
+            "timestamp": datetime.now(UTC).isoformat(),
             "service": self.service_name,
             "level": record.levelname,
             "logger": record.name,
@@ -78,7 +90,7 @@ def get_logger(service_name: str, level: str = "INFO") -> logging.Logger:
     """Configures and returns a structured logger for a service."""
     logger = logging.getLogger(service_name)
     logger.setLevel(getattr(logging, level.upper(), logging.INFO))
-    
+
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
         handler.setFormatter(JSONFormatter(service_name))

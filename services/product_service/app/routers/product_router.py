@@ -1,9 +1,7 @@
 """Product service API endpoints."""
-from typing import Optional
+
 from fastapi import APIRouter, Depends, Query, status
-from shared.authentication.dependencies import require_admin
-from shared.authentication.jwt import TokenPayload
-from shared.schemas.common import PaginatedResponse
+
 from services.product_service.app.schemas.product import (
     ProductCreateRequest,
     ProductResponse,
@@ -12,6 +10,9 @@ from services.product_service.app.schemas.product import (
     StockReservationResponse,
 )
 from services.product_service.app.services.product_service import ProductService
+from shared.authentication.dependencies import require_admin
+from shared.authentication.jwt import TokenPayload
+from shared.schemas.common import PaginatedResponse
 
 product_router = APIRouter(prefix="/products", tags=["Products"])
 
@@ -35,7 +36,7 @@ async def create_product(
 async def list_products(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    search: Optional[str] = Query(None),
+    search: str | None = Query(None),
     only_active: bool = Query(True),
     service: ProductService = Depends(get_product_service),
 ):

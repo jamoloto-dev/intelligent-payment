@@ -1,15 +1,17 @@
 """Unit and API tests for Product Service."""
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
-from shared.authentication.jwt import JWTManager
-from shared.database.base import Base
+
 from services.product_service.app.config.settings import settings
 from services.product_service.app.main import app
 from services.product_service.app.repositories.product_repository import ProductRepository
 from services.product_service.app.routers.product_router import get_product_service
 from services.product_service.app.services.product_service import ProductService
+from shared.authentication.jwt import JWTManager
+from shared.database.base import Base
 
 test_engine = create_async_engine(
     "sqlite+aiosqlite:///:memory:",
@@ -37,7 +39,9 @@ async def setup_test_db():
 
 
 jwt_mgr = JWTManager(secret_key=settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
-admin_token = jwt_mgr.create_access_token(user_id="admin_1", email="admin@example.com", role="ADMIN")
+admin_token = jwt_mgr.create_access_token(
+    user_id="admin_1", email="admin@example.com", role="ADMIN"
+)
 user_token = jwt_mgr.create_access_token(user_id="user_1", email="user@example.com", role="USER")
 
 
@@ -49,15 +53,20 @@ async def test_create_and_get_product():
         forbidden_res = await ac.post(
             "/products",
             json={"name": "Laptop", "price": 999.99, "stock_quantity": 10},
-            headers={"Authorization": f"Bearer {user_token}"}
+            headers={"Authorization": f"Bearer {user_token}"},
         )
         assert forbidden_res.status_code == 403
 
         # Admin created
         res = await ac.post(
             "/products",
-            json={"name": "MacBook Pro", "description": "M3 Chip", "price": 1999.99, "stock_quantity": 5},
-            headers={"Authorization": f"Bearer {admin_token}"}
+            json={
+                "name": "MacBook Pro",
+                "description": "M3 Chip",
+                "price": 1999.99,
+                "stock_quantity": 5,
+            },
+            headers={"Authorization": f"Bearer {admin_token}"},
         )
         assert res.status_code == 201
         prod_data = res.json()
@@ -79,7 +88,7 @@ async def test_reserve_and_release_stock():
         create_res = await ac.post(
             "/products",
             json={"name": "Wireless Mouse", "price": 29.99, "stock_quantity": 10},
-            headers={"Authorization": f"Bearer {admin_token}"}
+            headers={"Authorization": f"Bearer {admin_token}"},
         )
         prod_id = create_res.json()["id"]
 

@@ -1,6 +1,7 @@
 """Azure Key Vault integration with environment fallback."""
+
 import os
-from typing import Optional
+
 from shared.logging.logger import get_logger
 
 logger = get_logger("azure_keyvault")
@@ -9,7 +10,7 @@ logger = get_logger("azure_keyvault")
 class SecretProvider:
     """Retrieves configuration secrets securely from Azure Key Vault or environment."""
 
-    def __init__(self, keyvault_url: Optional[str] = None):
+    def __init__(self, keyvault_url: str | None = None):
         self.keyvault_url = keyvault_url or os.getenv("AZURE_KEYVAULT_URL")
         self.client = None
 
@@ -22,9 +23,11 @@ class SecretProvider:
                 self.client = SecretClient(vault_url=self.keyvault_url, credential=credential)
                 logger.info(f"Initialized Azure Key Vault client for {self.keyvault_url}")
             except Exception as e:
-                logger.warning(f"Could not connect to Azure Key Vault: {e}. Using environment fallback.")
+                logger.warning(
+                    f"Could not connect to Azure Key Vault: {e}. Using environment fallback."
+                )
 
-    def get_secret(self, secret_name: str, default: Optional[str] = None) -> Optional[str]:
+    def get_secret(self, secret_name: str, default: str | None = None) -> str | None:
         """Fetch secret from Azure Key Vault, falling back to OS environment variable."""
         if self.client:
             try:

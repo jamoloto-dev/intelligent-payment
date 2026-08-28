@@ -1,14 +1,17 @@
 """Order and OrderItem database models."""
+
 from decimal import Decimal
-from typing import List
+
 from sqlalchemy import CheckConstraint, Enum, ForeignKey, Index, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from shared.database.base import Base, TimestampMixin, UUIDMixin
 from shared.schemas.common import OrderStatus
 
 
 class Order(Base, UUIDMixin, TimestampMixin):
     """Customer order entity."""
+
     __tablename__ = "orders"
 
     user_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
@@ -22,7 +25,7 @@ class Order(Base, UUIDMixin, TimestampMixin):
     shipping_address: Mapped[str] = mapped_column(Text, default="", nullable=False)
 
     # Relationships
-    items: Mapped[List["OrderItem"]] = relationship(
+    items: Mapped[list["OrderItem"]] = relationship(
         "OrderItem",
         back_populates="order",
         cascade="all, delete-orphan",
@@ -38,6 +41,7 @@ class Order(Base, UUIDMixin, TimestampMixin):
 
 class OrderItem(Base, UUIDMixin, TimestampMixin):
     """Line item in a customer order."""
+
     __tablename__ = "order_items"
 
     order_id: Mapped[str] = mapped_column(

@@ -1,15 +1,16 @@
 """Unit and API tests for Notification Service."""
+
 import pytest
 from httpx import ASGITransport, AsyncClient
-from shared.authentication.jwt import JWTManager
-from shared.events.redis_client import EventBus
+
 from services.notification_service.app.config.settings import settings
 from services.notification_service.app.consumers.event_consumer import NotificationEventConsumer
 from services.notification_service.app.main import app
 from services.notification_service.app.routers.notification_router import get_notification_service
-from services.notification_service.app.schemas.notification import NotificationSendRequest, NotificationType
 from services.notification_service.app.services.notification_service import NotificationService
 from services.notification_service.app.storage.storage import NotificationStorage
+from shared.authentication.jwt import JWTManager
+from shared.events.redis_client import EventBus
 
 test_storage = NotificationStorage()
 test_service = NotificationService(storage=test_storage)
@@ -22,8 +23,12 @@ async def override_get_notification_service():
 app.dependency_overrides[get_notification_service] = override_get_notification_service
 
 jwt_mgr = JWTManager(secret_key=settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
-admin_token = jwt_mgr.create_access_token(user_id="admin_notif", email="admin@notif.com", role="ADMIN")
-user_token = jwt_mgr.create_access_token(user_id="user_notif", email="customer@example.com", role="USER")
+admin_token = jwt_mgr.create_access_token(
+    user_id="admin_notif", email="admin@notif.com", role="ADMIN"
+)
+user_token = jwt_mgr.create_access_token(
+    user_id="user_notif", email="customer@example.com", role="USER"
+)
 
 
 @pytest.mark.asyncio
@@ -38,7 +43,7 @@ async def test_manual_notification_dispatch():
                 "body": "Your account is activated.",
                 "notification_type": "LOG",
             },
-            headers={"Authorization": f"Bearer {admin_token}"}
+            headers={"Authorization": f"Bearer {admin_token}"},
         )
         assert res.status_code == 201
         data = res.json()
@@ -59,23 +64,27 @@ async def test_event_consumer_order_and_payment():
     consumer = NotificationEventConsumer(event_bus=bus, notification_service=test_service)
 
     # Order Created
-    await consumer.handle_order_created({
-        "order_id": "ord_event_1",
-        "user_id": "usr_event_1",
-        "user_email": "event_buyer@example.com",
-        "total_amount": "199.99",
-        "currency": "USD",
-    })
+    await consumer.handle_order_created(
+        {
+            "order_id": "ord_event_1",
+            "user_id": "usr_event_1",
+            "user_email": "event_buyer@example.com",
+            "total_amount": "199.99",
+            "currency": "USD",
+        }
+    )
 
     # Payment Completed
-    await consumer.handle_payment_completed({
-        "payment_id": "pay_event_1",
-        "order_id": "ord_event_1",
-        "user_id": "usr_event_1",
-        "user_email": "event_buyer@example.com",
-        "amount": "199.99",
-        "currency": "USD",
-    })
+    await consumer.handle_payment_completed(
+        {
+            "payment_id": "pay_event_1",
+            "order_id": "ord_event_1",
+            "user_id": "usr_event_1",
+            "user_email": "event_buyer@example.com",
+            "amount": "199.99",
+            "currency": "USD",
+        }
+    )
 
     records = await test_storage.list_notifications(recipient="event_buyer@example.com")
     assert len(records) == 2

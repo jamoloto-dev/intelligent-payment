@@ -1,9 +1,10 @@
 """Order repository for database access."""
-from typing import List, Optional, Tuple
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from services.order_service.app.models.order import Order, OrderItem
+
+from services.order_service.app.models.order import Order
 
 
 class OrderRepository:
@@ -12,12 +13,8 @@ class OrderRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_by_id(self, order_id: str) -> Optional[Order]:
-        stmt = (
-            select(Order)
-            .where(Order.id == order_id)
-            .options(selectinload(Order.items))
-        )
+    async def get_by_id(self, order_id: str) -> Order | None:
+        stmt = select(Order).where(Order.id == order_id).options(selectinload(Order.items))
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
 
@@ -38,11 +35,11 @@ class OrderRepository:
 
     async def list_orders(
         self,
-        user_id: Optional[str] = None,
-        status: Optional[str] = None,
+        user_id: str | None = None,
+        status: str | None = None,
         page: int = 1,
         page_size: int = 20,
-    ) -> Tuple[List[Order], int]:
+    ) -> tuple[list[Order], int]:
         filters = []
         if user_id:
             filters.append(Order.user_id == user_id)

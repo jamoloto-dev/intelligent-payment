@@ -1,10 +1,7 @@
 """User service business logic layer."""
-from typing import List, Optional, Tuple
+
 from fastapi import HTTPException, status
-from shared.authentication.jwt import JWTManager
-from shared.authentication.password import hash_password, verify_password
-from shared.logging.logger import get_logger
-from shared.schemas.common import UserRole
+
 from services.user_service.app.config.settings import settings
 from services.user_service.app.models.user import User
 from services.user_service.app.repositories.user_repository import UserRepository
@@ -15,6 +12,10 @@ from services.user_service.app.schemas.user import (
     UserResponse,
     UserUpdateRequest,
 )
+from shared.authentication.jwt import JWTManager
+from shared.authentication.password import hash_password, verify_password
+from shared.logging.logger import get_logger
+from shared.schemas.common import UserRole
 
 logger = get_logger("user-service")
 
@@ -36,7 +37,10 @@ class UserService:
             logger.warning(f"Registration failed: email {req.email} already exists")
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail={"error": "USER_ALREADY_EXISTS", "message": "A user with this email already exists"},
+                detail={
+                    "error": "USER_ALREADY_EXISTS",
+                    "message": "A user with this email already exists",
+                },
             )
 
         hashed = hash_password(req.password)
@@ -125,6 +129,8 @@ class UserService:
             )
         await self.repository.delete(user)
 
-    async def list_users(self, page: int = 1, page_size: int = 20) -> Tuple[List[UserResponse], int]:
+    async def list_users(
+        self, page: int = 1, page_size: int = 20
+    ) -> tuple[list[UserResponse], int]:
         users, total = await self.repository.list_users(page, page_size)
         return [UserResponse.model_validate(u) for u in users], total

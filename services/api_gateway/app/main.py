@@ -1,18 +1,18 @@
 """API Gateway Main Entrypoint."""
+
 import asyncio
 from contextlib import asynccontextmanager
-from typing import Dict
-from fastapi import FastAPI, Request, status
+
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import httpx
+
+from services.api_gateway.app.config.settings import settings
+from services.api_gateway.app.middleware.rate_limit import RateLimitMiddleware
+from services.api_gateway.app.routers.proxy_router import http_client, proxy_router
 from shared.logging.logger import get_logger
 from shared.logging.middleware import RequestLoggingMiddleware
 from shared.schemas.common import HealthCheckResponse, HealthStatus
 from shared.schemas.errors import HTTPErrorResponse
-from services.api_gateway.app.config.settings import settings
-from services.api_gateway.app.middleware.rate_limit import RateLimitMiddleware
-from services.api_gateway.app.routers.proxy_router import http_client, proxy_router
 
 logger = get_logger("api-gateway")
 
@@ -54,7 +54,9 @@ app.add_middleware(
 )
 
 # Request Logging & Rate Limiting
-app.add_middleware(RateLimitMiddleware, max_requests_per_minute=settings.RATE_LIMIT_REQUESTS_PER_MINUTE)
+app.add_middleware(
+    RateLimitMiddleware, max_requests_per_minute=settings.RATE_LIMIT_REQUESTS_PER_MINUTE
+)
 app.add_middleware(RequestLoggingMiddleware, service_name=settings.SERVICE_NAME)
 
 
@@ -75,7 +77,8 @@ async def ready():
         "notification-service": f"{settings.NOTIFICATION_SERVICE_URL}/health",
     }
 
-    results: Dict[str, str] = {}
+    results: dict[str, str] = {}
+
     async def check_svc(name: str, url: str):
         try:
             resp = await http_client.get(url, timeout=1.5)

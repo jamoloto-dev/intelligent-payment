@@ -1,7 +1,9 @@
 """Common Pydantic schemas shared across microservices."""
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Generic, List, Optional, TypeVar
+from typing import Generic, TypeVar
+
 from pydantic import BaseModel, ConfigDict, Field
 
 T = TypeVar("T")
@@ -45,12 +47,14 @@ class FraudRiskLevel(str, Enum):
 
 class BaseResponse(BaseModel):
     """Base response model enabling ORM mode."""
+
     model_config = ConfigDict(from_attributes=True)
 
 
 class PaginatedResponse(BaseModel, Generic[T]):
     """Standard pagination wrapper."""
-    items: List[T]
+
+    items: list[T]
     total: int
     page: int
     page_size: int
@@ -65,7 +69,8 @@ class HealthStatus(str, Enum):
 
 class HealthCheckResponse(BaseModel):
     """Standard health/readiness probe schema."""
+
     service: str
     status: HealthStatus
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     dependencies: dict[str, str] = Field(default_factory=dict)

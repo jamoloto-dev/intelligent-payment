@@ -1,9 +1,5 @@
 """Fraud Service business logic layer."""
-from typing import List, Optional
-from shared.events.redis_client import EventBus
-from shared.logging.logger import get_logger
-from shared.schemas.common import FraudDecision, FraudRiskLevel
-from shared.schemas.events import FraudReviewRequiredEvent
+
 from services.fraud_service.app.rules.base import BaseFraudRule
 from services.fraud_service.app.rules.rules import (
     AccountAgeRule,
@@ -14,6 +10,10 @@ from services.fraud_service.app.rules.rules import (
 )
 from services.fraud_service.app.schemas.fraud import FraudCheckRequest, FraudCheckResponse
 from services.fraud_service.app.storage.storage import FraudStorage
+from shared.events.redis_client import EventBus
+from shared.logging.logger import get_logger
+from shared.schemas.common import FraudDecision, FraudRiskLevel
+from shared.schemas.events import FraudReviewRequiredEvent
 
 logger = get_logger("fraud-service")
 
@@ -23,9 +23,9 @@ class FraudService:
 
     def __init__(
         self,
-        rules: Optional[List[BaseFraudRule]] = None,
-        storage: Optional[FraudStorage] = None,
-        event_bus: Optional[EventBus] = None,
+        rules: list[BaseFraudRule] | None = None,
+        storage: FraudStorage | None = None,
+        event_bus: EventBus | None = None,
     ):
         self.rules = rules or [
             HighAmountRule(),
@@ -39,8 +39,8 @@ class FraudService:
 
     async def evaluate_transaction(self, request: FraudCheckRequest) -> FraudCheckResponse:
         total_risk_score = 0.0
-        reasons: List[str] = []
-        rules_triggered: List[str] = []
+        reasons: list[str] = []
+        rules_triggered: list[str] = []
 
         # Run all rules
         for rule in self.rules:
@@ -101,12 +101,16 @@ class FraudService:
 
         logger.info(
             f"Fraud check evaluated for tx {request.transaction_id}: score={final_score}, decision={decision.value}",
-            extra={"event": "fraud_evaluated", "status": decision.value, "extra_data": {"score": final_score}},
+            extra={
+                "event": "fraud_evaluated",
+                "status": decision.value,
+                "extra_data": {"score": final_score},
+            },
         )
         return response
 
-    async def get_by_transaction_id(self, transaction_id: str) -> Optional[FraudCheckResponse]:
+    async def get_by_transaction_id(self, transaction_id: str) -> FraudCheckResponse | None:
         return await self.storage.get_by_transaction_id(transaction_id)
 
-    async def list_evaluations(self, limit: int = 50) -> List[FraudCheckResponse]:
+    async def list_evaluations(self, limit: int = 50) -> list[FraudCheckResponse]:
         return await self.storage.list_evaluations(limit=limit)

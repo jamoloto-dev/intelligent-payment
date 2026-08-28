@@ -1,6 +1,9 @@
 """Unit tests for Serverless Azure Audit Function."""
+
 import json
+
 import azure.functions as func
+
 from functions.audit_function.function_app import audit_transaction
 
 
@@ -18,10 +21,10 @@ def test_azure_audit_function_valid_request():
         url="/api/audit-transaction",
         headers={"Content-Type": "application/json"},
     )
-    
+
     resp = audit_transaction(req)
     assert resp.status_code == 201
-    
+
     body = json.loads(resp.get_body())
     assert body["status"] == "SUCCESS"
     assert body["event_type"] == "PaymentCompleted"
@@ -36,7 +39,7 @@ def test_azure_audit_function_invalid_json():
         url="/api/audit-transaction",
         headers={"Content-Type": "application/json"},
     )
-    
+
     resp = audit_transaction(req)
     assert resp.status_code == 400
     body = json.loads(resp.get_body())

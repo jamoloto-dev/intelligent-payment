@@ -1,20 +1,26 @@
 """Notification Service main FastAPI application entrypoint."""
+
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+from services.notification_service.app.config.settings import settings
+from services.notification_service.app.consumers.event_consumer import NotificationEventConsumer
+from services.notification_service.app.routers.notification_router import (
+    get_notification_service,
+    notification_router,
+)
+from services.notification_service.app.services.notification_service import NotificationService
+from services.notification_service.app.storage.storage import NotificationStorage
 from shared.events.redis_client import EventBus
 from shared.logging.logger import get_logger
 from shared.logging.middleware import RequestLoggingMiddleware
 from shared.schemas.common import HealthCheckResponse, HealthStatus
 from shared.schemas.errors import HTTPErrorResponse
-from services.notification_service.app.config.settings import settings
-from services.notification_service.app.consumers.event_consumer import NotificationEventConsumer
-from services.notification_service.app.routers.notification_router import get_notification_service, notification_router
-from services.notification_service.app.services.notification_service import NotificationService
-from services.notification_service.app.storage.storage import NotificationStorage
 
 logger = get_logger("notification-service")
 
@@ -56,6 +62,7 @@ app.add_middleware(RequestLoggingMiddleware, service_name=settings.SERVICE_NAME)
 # Dependency injection
 async def get_notification_service_dependency() -> AsyncGenerator[NotificationService, None]:
     yield notification_service_instance
+
 
 app.dependency_overrides[get_notification_service] = get_notification_service_dependency
 

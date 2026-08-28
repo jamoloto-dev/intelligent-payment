@@ -1,20 +1,23 @@
 """Product Service main FastAPI application entrypoint."""
+
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+from services.product_service.app.config.settings import settings
+from services.product_service.app.repositories.product_repository import ProductRepository
+from services.product_service.app.routers.product_router import get_product_service, product_router
+from services.product_service.app.services.product_service import ProductService
 from shared.database.base import Base
 from shared.database.session import check_db_health, create_db_engine, create_session_factory
 from shared.logging.logger import get_logger
 from shared.logging.middleware import RequestLoggingMiddleware
 from shared.schemas.common import HealthCheckResponse, HealthStatus
 from shared.schemas.errors import HTTPErrorResponse
-from services.product_service.app.config.settings import settings
-from services.product_service.app.repositories.product_repository import ProductRepository
-from services.product_service.app.routers.product_router import get_product_service, product_router
-from services.product_service.app.services.product_service import ProductService
 
 logger = get_logger("product-service")
 
@@ -56,6 +59,7 @@ async def get_product_service_dependency() -> AsyncGenerator[ProductService, Non
     async with SessionLocal() as session:
         repo = ProductRepository(session)
         yield ProductService(repo)
+
 
 app.dependency_overrides[get_product_service] = get_product_service_dependency
 

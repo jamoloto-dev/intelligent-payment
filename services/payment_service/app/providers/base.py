@@ -1,7 +1,9 @@
 """Abstract base class for payment gateway providers."""
+
 from abc import ABC, abstractmethod
 from decimal import Decimal
-from typing import Any, Dict, Optional
+from typing import Any
+
 from pydantic import BaseModel
 
 
@@ -11,8 +13,8 @@ class ProviderChargeResult(BaseModel):
     amount: Decimal
     currency: str
     status: str
-    error_message: Optional[str] = None
-    raw_response: Dict[str, Any] = {}
+    error_message: str | None = None
+    raw_response: dict[str, Any] = {}
 
 
 class ProviderRefundResult(BaseModel):
@@ -20,7 +22,7 @@ class ProviderRefundResult(BaseModel):
     refund_id: str
     amount: Decimal
     status: str
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
 class PaymentProviderInterface(ABC):
@@ -32,8 +34,8 @@ class PaymentProviderInterface(ABC):
         amount: Decimal,
         currency: str,
         payment_method_id: str,
-        idempotency_key: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        idempotency_key: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> ProviderChargeResult:
         pass
 
@@ -45,11 +47,11 @@ class PaymentProviderInterface(ABC):
     async def refund_charge(
         self,
         transaction_id: str,
-        amount: Optional[Decimal] = None,
-        reason: Optional[str] = None,
+        amount: Decimal | None = None,
+        reason: str | None = None,
     ) -> ProviderRefundResult:
         pass
 
     @abstractmethod
-    def verify_webhook(self, payload: bytes, signature_header: str) -> Dict[str, Any]:
+    def verify_webhook(self, payload: bytes, signature_header: str) -> dict[str, Any]:
         pass

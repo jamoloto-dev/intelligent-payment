@@ -1,12 +1,14 @@
 """Event consumer subscribing to domain events and generating notifications."""
-from typing import Any, Dict
-from shared.events.redis_client import EventBus
-from shared.logging.logger import get_logger
+
+from typing import Any
+
 from services.notification_service.app.schemas.notification import (
     NotificationSendRequest,
     NotificationType,
 )
 from services.notification_service.app.services.notification_service import NotificationService
+from shared.events.redis_client import EventBus
+from shared.logging.logger import get_logger
 
 logger = get_logger("notification-consumer")
 
@@ -25,7 +27,7 @@ class NotificationEventConsumer:
         self.event_bus.subscribe("PaymentRefunded", self.handle_payment_refunded)
         self.event_bus.subscribe("FraudReviewRequired", self.handle_fraud_alert)
 
-    async def handle_order_created(self, event: Dict[str, Any]):
+    async def handle_order_created(self, event: dict[str, Any]):
         recipient = event.get("user_email") or f"user_{event.get('user_id')}@customer.local"
         order_id = event.get("order_id")
         total = event.get("total_amount")
@@ -41,7 +43,7 @@ class NotificationEventConsumer:
         )
         await self.service.send_notification(req)
 
-    async def handle_payment_completed(self, event: Dict[str, Any]):
+    async def handle_payment_completed(self, event: dict[str, Any]):
         recipient = event.get("user_email") or f"user_{event.get('user_id')}@customer.local"
         payment_id = event.get("payment_id")
         amount = event.get("amount")
@@ -57,7 +59,7 @@ class NotificationEventConsumer:
         )
         await self.service.send_notification(req)
 
-    async def handle_payment_failed(self, event: Dict[str, Any]):
+    async def handle_payment_failed(self, event: dict[str, Any]):
         recipient = event.get("user_email") or f"user_{event.get('user_id')}@customer.local"
         req = NotificationSendRequest(
             recipient=recipient,
@@ -69,7 +71,7 @@ class NotificationEventConsumer:
         )
         await self.service.send_notification(req)
 
-    async def handle_payment_refunded(self, event: Dict[str, Any]):
+    async def handle_payment_refunded(self, event: dict[str, Any]):
         recipient = event.get("user_email") or f"user_{event.get('user_id')}@customer.local"
         amount = event.get("amount")
         currency = event.get("currency", "USD")
@@ -83,7 +85,7 @@ class NotificationEventConsumer:
         )
         await self.service.send_notification(req)
 
-    async def handle_fraud_alert(self, event: Dict[str, Any]):
+    async def handle_fraud_alert(self, event: dict[str, Any]):
         req = NotificationSendRequest(
             recipient="security-alerts@intelligentpayment.com",
             subject=f"[SECURITY ALERT] Fraud Review Required - Score: {event.get('risk_score')}",

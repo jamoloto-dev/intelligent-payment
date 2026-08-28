@@ -1,7 +1,7 @@
 """Product service business logic layer."""
-from typing import List, Optional, Tuple
+
 from fastapi import HTTPException, status
-from shared.logging.logger import get_logger
+
 from services.product_service.app.models.product import Product
 from services.product_service.app.repositories.product_repository import ProductRepository
 from services.product_service.app.schemas.product import (
@@ -11,6 +11,7 @@ from services.product_service.app.schemas.product import (
     StockReservationRequest,
     StockReservationResponse,
 )
+from shared.logging.logger import get_logger
 
 logger = get_logger("product-service")
 
@@ -81,15 +82,17 @@ class ProductService:
         self,
         page: int = 1,
         page_size: int = 20,
-        search: Optional[str] = None,
+        search: str | None = None,
         only_active: bool = True,
-    ) -> Tuple[List[ProductResponse], int]:
+    ) -> tuple[list[ProductResponse], int]:
         products, total = await self.repository.list_products(
             page=page, page_size=page_size, search=search, only_active=only_active
         )
         return [ProductResponse.model_validate(p) for p in products], total
 
-    async def reserve_stock(self, product_id: str, req: StockReservationRequest) -> StockReservationResponse:
+    async def reserve_stock(
+        self, product_id: str, req: StockReservationRequest
+    ) -> StockReservationResponse:
         """Atomically decrement stock for order placement."""
         product = await self.repository.get_by_id(product_id, for_update=True)
         if not product:
@@ -101,7 +104,10 @@ class ProductService:
         if not product.is_active:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"error": "PRODUCT_INACTIVE", "message": f"Product {product.name} is no longer active"},
+                detail={
+                    "error": "PRODUCT_INACTIVE",
+                    "message": f"Product {product.name} is no longer active",
+                },
             )
 
         if product.stock_quantity < req.quantity:
@@ -115,7 +121,9 @@ class ProductService:
 
         product.stock_quantity -= req.quantity
         await self.repository.update(product)
-        logger.info(f"Reserved {req.quantity} units of {product.name} (remaining: {product.stock_quantity})")
+        logger.info(
+            f"Reserved {req.quantity} units of {product.name} (remaining: {product.stock_quantity})"
+        )
         return StockReservationResponse(
             product_id=product.id,
             reserved_quantity=req.quantity,
@@ -124,7 +132,9 @@ class ProductService:
             currency=product.currency,
         )
 
-    async def release_stock(self, product_id: str, req: StockReservationRequest) -> StockReservationResponse:
+    async def release_stock(
+        self, product_id: str, req: StockReservationRequest
+    ) -> StockReservationResponse:
         """Atomically increment stock when order is cancelled or payment fails."""
         product = await self.repository.get_by_id(product_id, for_update=True)
         if not product:
@@ -135,7 +145,9 @@ class ProductService:
 
         product.stock_quantity += req.quantity
         await self.repository.update(product)
-        logger.info(f"Released {req.quantity} units of {product.name} (new stock: {product.stock_quantity})")
+        logger.info(
+            f"Released {req.quantity} units of {product.name} (new stock: {product.stock_quantity})"
+        )
         return StockReservationResponse(
             product_id=product.id,
             reserved_quantity=req.quantity,

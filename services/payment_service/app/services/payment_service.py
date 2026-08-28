@@ -1,18 +1,12 @@
 """Payment Service business logic layer."""
-from decimal import Decimal
-from typing import Any, Dict, List, Optional, Tuple
+
 import uuid
-from fastapi import HTTPException, status
+from decimal import Decimal
+from typing import Any
+
 import httpx
-from shared.events.redis_client import EventBus
-from shared.logging.logger import get_logger
-from shared.schemas.common import FraudDecision, PaymentStatus
-from shared.schemas.events import (
-    PaymentCompletedEvent,
-    PaymentCreatedEvent,
-    PaymentFailedEvent,
-    PaymentRefundedEvent,
-)
+from fastapi import HTTPException, status
+
 from services.payment_service.app.config.settings import settings
 from services.payment_service.app.models.payment import Payment
 from services.payment_service.app.providers.base import PaymentProviderInterface
@@ -21,6 +15,14 @@ from services.payment_service.app.schemas.payment import (
     PaymentCreateRequest,
     PaymentRefundRequest,
     PaymentResponse,
+)
+from shared.events.redis_client import EventBus
+from shared.logging.logger import get_logger
+from shared.schemas.common import FraudDecision, PaymentStatus
+from shared.schemas.events import (
+    PaymentCompletedEvent,
+    PaymentFailedEvent,
+    PaymentRefundedEvent,
 )
 
 logger = get_logger("payment-service")
@@ -33,8 +35,8 @@ class PaymentService:
         self,
         repository: PaymentRepository,
         provider: PaymentProviderInterface,
-        event_bus: Optional[EventBus] = None,
-        fraud_client: Optional[Any] = None,
+        event_bus: EventBus | None = None,
+        fraud_client: Any | None = None,
     ):
         self.repository = repository
         self.provider = provider
@@ -48,9 +50,9 @@ class PaymentService:
         user_id: str,
         amount: Decimal,
         currency: str,
-        billing_country: Optional[str] = None,
-        client_ip: Optional[str] = None,
-    ) -> Dict[str, Any]:
+        billing_country: str | None = None,
+        client_ip: str | None = None,
+    ) -> dict[str, Any]:
         """Call Fraud Service for risk evaluation."""
         if self.fraud_client:
             return await self.fraud_client.check(
@@ -66,19 +68,24 @@ class PaymentService:
         url = f"{settings.FRAUD_SERVICE_URL}/fraud/check"
         async with httpx.AsyncClient(timeout=5.0) as client:
             try:
-                resp = await client.post(url, json={
-                    "transaction_id": transaction_id,
-                    "order_id": order_id,
-                    "user_id": user_id,
-                    "amount": float(amount),
-                    "currency": currency,
-                    "billing_country": billing_country,
-                    "client_ip": client_ip,
-                })
+                resp = await client.post(
+                    url,
+                    json={
+                        "transaction_id": transaction_id,
+                        "order_id": order_id,
+                        "user_id": user_id,
+                        "amount": float(amount),
+                        "currency": currency,
+                        "billing_country": billing_country,
+                        "client_ip": client_ip,
+                    },
+                )
                 if resp.status_code == 200:
                     return resp.json()
             except Exception as e:
-                logger.warning(f"Fraud check communication error: {e}. Falling back to default low-risk evaluation.")
+                logger.warning(
+                    f"Fraud check communication error: {e}. Falling back to default low-risk evaluation."
+                )
         return {"decision": "APPROVE", "risk_score": 0.0, "reasons": ["Default low risk profile"]}
 
     async def process_payment(
@@ -158,7 +165,9 @@ class PaymentService:
             currency=req.currency or "USD",
             provider=provider_name,
             provider_transaction_id=charge_res.transaction_id,
-            status=PaymentStatus.SUCCEEDED.value if charge_res.success else PaymentStatus.FAILED.value,
+            status=(
+                PaymentStatus.SUCCEEDED.value if charge_res.success else PaymentStatus.FAILED.value
+            ),
             idempotency_key=req.idempotency_key,
             failure_reason=charge_res.error_message if not charge_res.success else None,
         )
@@ -194,7 +203,10 @@ class PaymentService:
         if not charge_res.success:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"error": "PAYMENT_FAILED", "message": charge_res.error_message or "Payment failed"},
+                detail={
+                    "error": "PAYMENT_FAILED",
+                    "message": charge_res.error_message or "Payment failed",
+                },
             )
 
         return PaymentResponse.model_validate(saved)
@@ -208,11 +220,13 @@ class PaymentService:
             )
         return PaymentResponse.model_validate(payment)
 
-    async def get_by_order(self, order_id: str) -> List[PaymentResponse]:
+    async def get_by_order(self, order_id: str) -> list[PaymentResponse]:
         payments = await self.repository.get_by_order_id(order_id)
         return [PaymentResponse.model_validate(p) for p in payments]
 
-    async def refund_payment(self, payment_id: str, user_id: str, is_admin: bool, req: PaymentRefundRequest) -> PaymentResponse:
+    async def refund_payment(
+        self, payment_id: str, user_id: str, is_admin: bool, req: PaymentRefundRequest
+    ) -> PaymentResponse:
         payment = await self.repository.get_by_id(payment_id)
         if not payment:
             raise HTTPException(
@@ -227,7 +241,10 @@ class PaymentService:
         if payment.status != PaymentStatus.SUCCEEDED.value:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"error": "INVALID_PAYMENT_STATE", "message": f"Cannot refund payment with status {payment.status}"},
+                detail={
+                    "error": "INVALID_PAYMENT_STATE",
+                    "message": f"Cannot refund payment with status {payment.status}",
+                },
             )
 
         refund_res = await self.provider.refund_charge(
@@ -239,7 +256,10 @@ class PaymentService:
         if not refund_res.success:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"error": "REFUND_FAILED", "message": refund_res.error_message or "Refund failed at provider"},
+                detail={
+                    "error": "REFUND_FAILED",
+                    "message": refund_res.error_message or "Refund failed at provider",
+                },
             )
 
         payment.status = PaymentStatus.REFUNDED.value

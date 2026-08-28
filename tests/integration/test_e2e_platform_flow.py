@@ -1,18 +1,18 @@
 """End-to-End Platform Flow Integration Test."""
-from decimal import Decimal
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
+
+import services.fraud_service.app.main as fraud_main
+import services.order_service.app.main as order_main
+import services.payment_service.app.main as payment_main
+import services.product_service.app.main as product_main
+import services.user_service.app.main as user_main
+from shared.azure.tables import AuditTableStorage
 from shared.database.base import Base
 from shared.events.redis_client import EventBus
-from shared.azure.tables import AuditTableStorage
-
-import services.user_service.app.main as user_main
-import services.product_service.app.main as product_main
-import services.order_service.app.main as order_main
-import services.fraud_service.app.main as fraud_main
-import services.payment_service.app.main as payment_main
 
 # DB setup for integration test with StaticPool
 e2e_engine = create_async_engine(
@@ -81,18 +81,30 @@ async def test_full_end_to_end_journey():
         def __init__(self, fraud_app):
             self.app = fraud_app
 
-        async def check(self, transaction_id, order_id, user_id, amount, currency, billing_country=None, client_ip=None):
+        async def check(
+            self,
+            transaction_id,
+            order_id,
+            user_id,
+            amount,
+            currency,
+            billing_country=None,
+            client_ip=None,
+        ):
             transport = ASGITransport(app=self.app)
             async with AsyncClient(transport=transport, base_url="http://test") as ac:
-                resp = await ac.post("/fraud/check", json={
-                    "transaction_id": transaction_id,
-                    "order_id": order_id,
-                    "user_id": user_id,
-                    "amount": float(amount),
-                    "currency": currency,
-                    "billing_country": billing_country,
-                    "client_ip": client_ip,
-                })
+                resp = await ac.post(
+                    "/fraud/check",
+                    json={
+                        "transaction_id": transaction_id,
+                        "order_id": order_id,
+                        "user_id": user_id,
+                        "amount": float(amount),
+                        "currency": currency,
+                        "billing_country": billing_country,
+                        "client_ip": client_ip,
+                    },
+                )
                 return resp.json()
 
     fraud_client = DirectFraudClient(fraud_main.app)
@@ -107,54 +119,81 @@ async def test_full_end_to_end_journey():
             )
 
     user_main.app.dependency_overrides[user_main.get_user_service] = get_test_user_service
-    product_main.app.dependency_overrides[product_main.get_product_service] = get_test_product_service
+    product_main.app.dependency_overrides[product_main.get_product_service] = (
+        get_test_product_service
+    )
     order_main.app.dependency_overrides[order_main.get_order_service] = get_test_order_service
-    payment_main.app.dependency_overrides[payment_main.get_payment_service] = get_test_payment_service
+    payment_main.app.dependency_overrides[payment_main.get_payment_service] = (
+        get_test_payment_service
+    )
 
     # Setup async clients
     user_client = AsyncClient(transport=ASGITransport(app=user_main.app), base_url="http://test")
-    product_client_http = AsyncClient(transport=ASGITransport(app=product_main.app), base_url="http://test")
+    product_client_http = AsyncClient(
+        transport=ASGITransport(app=product_main.app), base_url="http://test"
+    )
     order_client = AsyncClient(transport=ASGITransport(app=order_main.app), base_url="http://test")
-    payment_client = AsyncClient(transport=ASGITransport(app=payment_main.app), base_url="http://test")
-    fraud_client_http = AsyncClient(transport=ASGITransport(app=fraud_main.app), base_url="http://test")
+    payment_client = AsyncClient(
+        transport=ASGITransport(app=payment_main.app), base_url="http://test"
+    )
+    fraud_client_http = AsyncClient(
+        transport=ASGITransport(app=fraud_main.app), base_url="http://test"
+    )
 
     # Step 1: Register User and Admin
-    admin_reg = await user_client.post("/auth/register", json={
-        "email": "admin.e2e@platform.com",
-        "password": "AdminPassword123!",
-        "first_name": "Admin",
-        "last_name": "System",
-        "role": "ADMIN",
-    })
+    admin_reg = await user_client.post(
+        "/auth/register",
+        json={
+            "email": "admin.e2e@platform.com",
+            "password": "AdminPassword123!",
+            "first_name": "Admin",
+            "last_name": "System",
+            "role": "ADMIN",
+        },
+    )
     assert admin_reg.status_code == 201
 
-    user_reg = await user_client.post("/auth/register", json={
-        "email": "alice.e2e@customer.com",
-        "password": "AlicePassword123!",
-        "first_name": "Alice",
-        "last_name": "Wonderland",
-        "role": "USER",
-    })
+    user_reg = await user_client.post(
+        "/auth/register",
+        json={
+            "email": "alice.e2e@customer.com",
+            "password": "AlicePassword123!",
+            "first_name": "Alice",
+            "last_name": "Wonderland",
+            "role": "USER",
+        },
+    )
     assert user_reg.status_code == 201
     alice_id = user_reg.json()["id"]
 
     # Step 2: Login
-    admin_login = await user_client.post("/auth/login", json={
-        "email": "admin.e2e@platform.com",
-        "password": "AdminPassword123!",
-    })
+    admin_login = await user_client.post(
+        "/auth/login",
+        json={
+            "email": "admin.e2e@platform.com",
+            "password": "AdminPassword123!",
+        },
+    )
     admin_token = admin_login.json()["access_token"]
 
-    alice_login = await user_client.post("/auth/login", json={
-        "email": "alice.e2e@customer.com",
-        "password": "AlicePassword123!",
-    })
+    alice_login = await user_client.post(
+        "/auth/login",
+        json={
+            "email": "alice.e2e@customer.com",
+            "password": "AlicePassword123!",
+        },
+    )
     alice_token = alice_login.json()["access_token"]
 
     # Step 3: Admin creates products in catalog
     p1_res = await product_client_http.post(
         "/products",
-        json={"name": "Ergonomic Keyboard", "price": 120.00, "stock_quantity": 25, "currency": "USD"},
+        json={
+            "name": "Ergonomic Keyboard",
+            "price": 120.00,
+            "stock_quantity": 25,
+            "currency": "USD",
+        },
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert p1_res.status_code == 201
@@ -162,7 +201,12 @@ async def test_full_end_to_end_journey():
 
     p2_res = await product_client_http.post(
         "/products",
-        json={"name": "UltraWide Monitor", "price": 450.00, "stock_quantity": 10, "currency": "USD"},
+        json={
+            "name": "UltraWide Monitor",
+            "price": 450.00,
+            "stock_quantity": 10,
+            "currency": "USD",
+        },
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert p2_res.status_code == 201
@@ -231,11 +275,15 @@ async def test_full_end_to_end_journey():
     assert status_update.json()["status"] == "PAID"
 
     # Step 8: Alice retrieves her order and payment history
-    final_order = await order_client.get(f"/orders/{order_id}", headers={"Authorization": f"Bearer {alice_token}"})
+    final_order = await order_client.get(
+        f"/orders/{order_id}", headers={"Authorization": f"Bearer {alice_token}"}
+    )
     assert final_order.status_code == 200
     assert final_order.json()["status"] == "PAID"
 
-    alice_payments = await payment_client.get(f"/payments/order/{order_id}", headers={"Authorization": f"Bearer {alice_token}"})
+    alice_payments = await payment_client.get(
+        f"/payments/order/{order_id}", headers={"Authorization": f"Bearer {alice_token}"}
+    )
     assert alice_payments.status_code == 200
     assert len(alice_payments.json()) == 1
     assert alice_payments.json()[0]["id"] == payment_id

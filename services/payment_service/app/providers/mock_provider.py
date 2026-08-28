@@ -1,7 +1,9 @@
 """Mock sandbox payment provider for automated tests and offline development."""
-from decimal import Decimal
-from typing import Any, Dict, Optional
+
 import uuid
+from decimal import Decimal
+from typing import Any
+
 from services.payment_service.app.providers.base import (
     PaymentProviderInterface,
     ProviderChargeResult,
@@ -13,16 +15,16 @@ class MockPaymentProvider(PaymentProviderInterface):
     """Simulates Stripe sandbox responses deterministically."""
 
     def __init__(self):
-        self._charges: Dict[str, ProviderChargeResult] = {}
-        self._refunds: Dict[str, ProviderRefundResult] = {}
+        self._charges: dict[str, ProviderChargeResult] = {}
+        self._refunds: dict[str, ProviderRefundResult] = {}
 
     async def create_charge(
         self,
         amount: Decimal,
         currency: str,
         payment_method_id: str,
-        idempotency_key: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        idempotency_key: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> ProviderChargeResult:
         # Simulate failure if payment_method_id contains 'declined' or 'fail'
         if "declined" in payment_method_id.lower() or "fail" in payment_method_id.lower():
@@ -66,8 +68,8 @@ class MockPaymentProvider(PaymentProviderInterface):
     async def refund_charge(
         self,
         transaction_id: str,
-        amount: Optional[Decimal] = None,
-        reason: Optional[str] = None,
+        amount: Decimal | None = None,
+        reason: str | None = None,
     ) -> ProviderRefundResult:
         refund_id = f"re_mock_{uuid.uuid4().hex[:8]}"
         refund_amount = amount or Decimal("100.00")
@@ -80,7 +82,7 @@ class MockPaymentProvider(PaymentProviderInterface):
         self._refunds[refund_id] = res
         return res
 
-    def verify_webhook(self, payload: bytes, signature_header: str) -> Dict[str, Any]:
+    def verify_webhook(self, payload: bytes, signature_header: str) -> dict[str, Any]:
         return {
             "id": f"evt_mock_{uuid.uuid4().hex[:8]}",
             "type": "payment_intent.succeeded",

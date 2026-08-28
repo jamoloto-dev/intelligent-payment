@@ -1,19 +1,22 @@
 """Fraud Detection Service main FastAPI application entrypoint."""
+
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+from services.fraud_service.app.config.settings import settings
+from services.fraud_service.app.routers.fraud_router import fraud_router, get_fraud_service
+from services.fraud_service.app.services.fraud_service import FraudService
+from services.fraud_service.app.storage.storage import FraudStorage
 from shared.events.redis_client import EventBus
 from shared.logging.logger import get_logger
 from shared.logging.middleware import RequestLoggingMiddleware
 from shared.schemas.common import HealthCheckResponse, HealthStatus
 from shared.schemas.errors import HTTPErrorResponse
-from services.fraud_service.app.config.settings import settings
-from services.fraud_service.app.routers.fraud_router import fraud_router, get_fraud_service
-from services.fraud_service.app.services.fraud_service import FraudService
-from services.fraud_service.app.storage.storage import FraudStorage
 
 logger = get_logger("fraud-service")
 
@@ -52,6 +55,7 @@ app.add_middleware(RequestLoggingMiddleware, service_name=settings.SERVICE_NAME)
 # Dependency injection
 async def get_fraud_service_dependency() -> AsyncGenerator[FraudService, None]:
     yield fraud_service_instance
+
 
 app.dependency_overrides[get_fraud_service] = get_fraud_service_dependency
 

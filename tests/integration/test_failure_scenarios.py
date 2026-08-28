@@ -1,14 +1,16 @@
 """Integration tests for failure scenarios, edge cases, and security boundaries."""
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
-from shared.authentication.jwt import JWTManager
-from shared.database.base import Base
-import services.user_service.app.main as user_main
-import services.product_service.app.main as product_main
+
 import services.order_service.app.main as order_main
 import services.payment_service.app.main as payment_main
+import services.product_service.app.main as product_main
+import services.user_service.app.main as user_main
+from shared.authentication.jwt import JWTManager
+from shared.database.base import Base
 
 fail_engine = create_async_engine(
     "sqlite+aiosqlite:///:memory:",
@@ -31,7 +33,9 @@ async def setup_failure_dbs():
 @pytest.mark.asyncio
 async def test_all_failure_modes_and_error_codes():
     jwt_mgr = JWTManager(secret_key="super_secret_jwt_key_for_development_purposes_min32chars")
-    alice_token = jwt_mgr.create_access_token(user_id="alice_fail_id", email="alice@fail.com", role="USER")
+    alice_token = jwt_mgr.create_access_token(
+        user_id="alice_fail_id", email="alice@fail.com", role="USER"
+    )
 
     async def get_test_user_service():
         async with FailSession() as session:
@@ -53,9 +57,13 @@ async def test_all_failure_modes_and_error_codes():
             )
 
     user_main.app.dependency_overrides[user_main.get_user_service] = get_test_user_service
-    product_main.app.dependency_overrides[product_main.get_product_service] = get_test_product_service
+    product_main.app.dependency_overrides[product_main.get_product_service] = (
+        get_test_product_service
+    )
     order_main.app.dependency_overrides[order_main.get_order_service] = get_test_order_service
-    payment_main.app.dependency_overrides[payment_main.get_payment_service] = get_test_payment_service
+    payment_main.app.dependency_overrides[payment_main.get_payment_service] = (
+        get_test_payment_service
+    )
 
     u_client = AsyncClient(transport=ASGITransport(app=user_main.app), base_url="http://test")
     p_client = AsyncClient(transport=ASGITransport(app=product_main.app), base_url="http://test")
@@ -68,7 +76,9 @@ async def test_all_failure_modes_and_error_codes():
     assert res_401.json()["error"] == "UNAUTHORIZED"
 
     # 2. 401 Unauthorized - Invalid Login
-    bad_login = await u_client.post("/auth/login", json={"email": "nonexistent@user.com", "password": "wrong"})
+    bad_login = await u_client.post(
+        "/auth/login", json={"email": "nonexistent@user.com", "password": "wrong"}
+    )
     assert bad_login.status_code == 401
     assert bad_login.json()["error"] == "INVALID_CREDENTIALS"
 
@@ -87,7 +97,9 @@ async def test_all_failure_modes_and_error_codes():
     assert res_404.json()["error"] == "PRODUCT_NOT_FOUND"
 
     # 5. 422 Unprocessable Entity - Validation Error (Negative price)
-    admin_token = jwt_mgr.create_access_token(user_id="admin_fail", email="admin@fail.com", role="ADMIN")
+    admin_token = jwt_mgr.create_access_token(
+        user_id="admin_fail", email="admin@fail.com", role="ADMIN"
+    )
     res_422 = await p_client.post(
         "/products",
         json={"name": "Bad Product", "price": -50.00, "stock_quantity": 10},
@@ -109,18 +121,24 @@ async def test_all_failure_modes_and_error_codes():
     assert over_reserve.json()["error"] == "INSUFFICIENT_STOCK"
 
     # 7. 409 Conflict - Duplicate user registration
-    await u_client.post("/auth/register", json={
-        "email": "first.reg@fail.com",
-        "password": "Password123!",
-        "first_name": "First",
-        "last_name": "Reg",
-    })
-    dup_res = await u_client.post("/auth/register", json={
-        "email": "first.reg@fail.com",
-        "password": "Password123!",
-        "first_name": "Second",
-        "last_name": "Reg",
-    })
+    await u_client.post(
+        "/auth/register",
+        json={
+            "email": "first.reg@fail.com",
+            "password": "Password123!",
+            "first_name": "First",
+            "last_name": "Reg",
+        },
+    )
+    dup_res = await u_client.post(
+        "/auth/register",
+        json={
+            "email": "first.reg@fail.com",
+            "password": "Password123!",
+            "first_name": "Second",
+            "last_name": "Reg",
+        },
+    )
     assert dup_res.status_code == 409
     assert dup_res.json()["error"] == "USER_ALREADY_EXISTS"
 

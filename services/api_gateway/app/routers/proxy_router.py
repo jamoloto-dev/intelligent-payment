@@ -1,10 +1,11 @@
 """Reverse Proxy forwarding routes to downstream microservices."""
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Request, Response, status
-from fastapi.responses import JSONResponse, StreamingResponse
+
 import httpx
-from shared.logging.logger import get_logger
+from fastapi import APIRouter, Request, Response, status
+from fastapi.responses import JSONResponse
+
 from services.api_gateway.app.config.settings import settings
+from shared.logging.logger import get_logger
 
 logger = get_logger("api-gateway")
 proxy_router = APIRouter()
@@ -24,14 +25,16 @@ SERVICE_MAP = {
 }
 
 
-def get_target_url(path: str) -> Optional[str]:
+def get_target_url(path: str) -> str | None:
     for prefix, base_url in SERVICE_MAP.items():
         if path == prefix or path.startswith(prefix + "/") or path.startswith(prefix + "?"):
             return base_url + path
     return None
 
 
-@proxy_router.api_route("/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"])
+@proxy_router.api_route(
+    "/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"]
+)
 async def forward_request(request: Request, path: str):
     full_path = f"/{path}"
     target_url = get_target_url(full_path)

@@ -1,20 +1,27 @@
 """User Service main FastAPI application entrypoint."""
+
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
+
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+from services.user_service.app.config.settings import settings
+from services.user_service.app.repositories.user_repository import UserRepository
+from services.user_service.app.routers.user_router import (
+    auth_router,
+    get_user_service,
+    users_router,
+)
+from services.user_service.app.services.user_service import UserService
 from shared.database.base import Base
 from shared.database.session import check_db_health, create_db_engine, create_session_factory
 from shared.logging.logger import get_logger
 from shared.logging.middleware import RequestLoggingMiddleware
 from shared.schemas.common import HealthCheckResponse, HealthStatus
 from shared.schemas.errors import HTTPErrorResponse
-from services.user_service.app.config.settings import settings
-from services.user_service.app.repositories.user_repository import UserRepository
-from services.user_service.app.routers.user_router import auth_router, get_user_service, users_router
-from services.user_service.app.services.user_service import UserService
 
 logger = get_logger("user-service")
 
@@ -64,11 +71,13 @@ app = FastAPI(
 # Attach Logging Middleware
 app.add_middleware(RequestLoggingMiddleware, service_name=settings.SERVICE_NAME)
 
+
 # Dependency overrides for database session
 async def get_user_service_dependency() -> AsyncGenerator[UserService, None]:
     async with SessionLocal() as session:
         repo = UserRepository(session)
         yield UserService(repo)
+
 
 app.dependency_overrides[get_user_service] = get_user_service_dependency
 

@@ -1,11 +1,12 @@
 """Fraud Service API endpoints."""
-from typing import List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from shared.authentication.dependencies import require_admin
-from shared.authentication.jwt import TokenPayload
+
 from services.fraud_service.app.schemas.fraud import FraudCheckRequest, FraudCheckResponse
 from services.fraud_service.app.services.fraud_service import FraudService
 from services.fraud_service.app.storage.storage import FraudStorage
+from shared.authentication.dependencies import require_admin
+from shared.authentication.jwt import TokenPayload
 
 fraud_router = APIRouter(prefix="/fraud", tags=["Fraud Detection"])
 
@@ -26,7 +27,7 @@ async def check_fraud(
     return await service.evaluate_transaction(req)
 
 
-@fraud_router.get("/evaluations", response_model=List[FraudCheckResponse])
+@fraud_router.get("/evaluations", response_model=list[FraudCheckResponse])
 async def list_fraud_evaluations(
     limit: int = Query(50, ge=1, le=200),
     current_user: TokenPayload = Depends(require_admin),
@@ -46,6 +47,9 @@ async def get_fraud_decision(
     if not decision:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail={"error": "FRAUD_RECORD_NOT_FOUND", "message": f"No fraud evaluation found for transaction {transaction_id}"},
+            detail={
+                "error": "FRAUD_RECORD_NOT_FOUND",
+                "message": f"No fraud evaluation found for transaction {transaction_id}",
+            },
         )
     return decision

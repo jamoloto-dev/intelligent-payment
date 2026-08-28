@@ -1,4 +1,5 @@
 """Fraud Service configuration settings."""
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,7 +19,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
     MONGODB_URL: str = "mongodb://localhost:27017"
     MONGODB_DB: str = "fraud_detection_db"
-    
+
     # JWT
     JWT_SECRET: str = "super_secret_jwt_key_for_development_purposes_min32chars"
     JWT_ALGORITHM: str = "HS256"

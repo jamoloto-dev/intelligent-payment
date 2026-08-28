@@ -1,5 +1,7 @@
 """Deterministic Fraud Evaluation Rules."""
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
+
 from services.fraud_service.app.config.settings import settings
 from services.fraud_service.app.rules.base import BaseFraudRule, RuleEvaluationResult
 from services.fraud_service.app.schemas.fraud import FraudCheckRequest
@@ -32,7 +34,9 @@ class HighAmountRule(BaseFraudRule):
                 reason=f"Transaction amount ({amt} {request.currency}) exceeds standard threshold ({self.high_threshold})",
                 triggered=True,
             )
-        return RuleEvaluationResult(rule_name="HighAmountRule", score_increment=0.0, triggered=False)
+        return RuleEvaluationResult(
+            rule_name="HighAmountRule", score_increment=0.0, triggered=False
+        )
 
 
 class VelocityRule(BaseFraudRule):
@@ -65,12 +69,14 @@ class AccountAgeRule(BaseFraudRule):
 
     def evaluate(self, request: FraudCheckRequest) -> RuleEvaluationResult:
         if not request.account_created_at:
-            return RuleEvaluationResult(rule_name="AccountAgeRule", score_increment=0.0, triggered=False)
+            return RuleEvaluationResult(
+                rule_name="AccountAgeRule", score_increment=0.0, triggered=False
+            )
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         acct_date = request.account_created_at
         if acct_date.tzinfo is None:
-            acct_date = acct_date.replace(tzinfo=timezone.utc)
+            acct_date = acct_date.replace(tzinfo=UTC)
 
         age_hours = (now - acct_date).total_seconds() / 3600.0
         if age_hours < 24.0:
@@ -80,7 +86,9 @@ class AccountAgeRule(BaseFraudRule):
                 reason=f"New account created only {round(age_hours, 1)} hours ago",
                 triggered=True,
             )
-        return RuleEvaluationResult(rule_name="AccountAgeRule", score_increment=0.0, triggered=False)
+        return RuleEvaluationResult(
+            rule_name="AccountAgeRule", score_increment=0.0, triggered=False
+        )
 
 
 class FailedPaymentsRule(BaseFraudRule):
@@ -105,7 +113,9 @@ class FailedPaymentsRule(BaseFraudRule):
                 reason=f"Previous failed payment attempt detected ({failed_count} attempt(s))",
                 triggered=True,
             )
-        return RuleEvaluationResult(rule_name="FailedPaymentsRule", score_increment=0.0, triggered=False)
+        return RuleEvaluationResult(
+            rule_name="FailedPaymentsRule", score_increment=0.0, triggered=False
+        )
 
 
 class GeolocationMismatchRule(BaseFraudRule):
@@ -120,4 +130,6 @@ class GeolocationMismatchRule(BaseFraudRule):
                     reason=f"Geolocation mismatch: Billing country '{request.billing_country}' != IP country '{request.ip_country}'",
                     triggered=True,
                 )
-        return RuleEvaluationResult(rule_name="GeolocationMismatchRule", score_increment=0.0, triggered=False)
+        return RuleEvaluationResult(
+            rule_name="GeolocationMismatchRule", score_increment=0.0, triggered=False
+        )

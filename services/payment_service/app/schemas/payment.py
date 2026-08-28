@@ -1,25 +1,32 @@
 """Payment request and response schemas."""
+
 from datetime import datetime
 from decimal import Decimal
-from typing import Any, Dict, Optional
+from typing import Any
+
 from pydantic import BaseModel, Field
-from shared.schemas.common import BaseResponse, PaymentStatus
+
+from shared.schemas.common import BaseResponse
 
 
 class PaymentCreateRequest(BaseModel):
     order_id: str
     amount: Decimal = Field(..., gt=0, description="Amount to charge")
-    currency: Optional[str] = Field(default="USD", min_length=3, max_length=3)
-    payment_method_id: Optional[str] = Field(default="pm_card_visa", description="Stripe PaymentMethod token or mock token")
-    idempotency_key: Optional[str] = Field(None, description="Unique client key preventing double charging")
-    user_email: Optional[str] = None
-    client_ip: Optional[str] = None
-    billing_country: Optional[str] = None
+    currency: str | None = Field(default="USD", min_length=3, max_length=3)
+    payment_method_id: str | None = Field(
+        default="pm_card_visa", description="Stripe PaymentMethod token or mock token"
+    )
+    idempotency_key: str | None = Field(
+        None, description="Unique client key preventing double charging"
+    )
+    user_email: str | None = None
+    client_ip: str | None = None
+    billing_country: str | None = None
 
 
 class PaymentRefundRequest(BaseModel):
-    amount: Optional[Decimal] = Field(None, gt=0, description="Optional partial refund amount")
-    reason: Optional[str] = Field(default="Customer requested refund")
+    amount: Decimal | None = Field(None, gt=0, description="Optional partial refund amount")
+    reason: str | None = Field(default="Customer requested refund")
 
 
 class PaymentResponse(BaseResponse):
@@ -29,10 +36,10 @@ class PaymentResponse(BaseResponse):
     amount: Decimal
     currency: str
     provider: str
-    provider_transaction_id: Optional[str] = None
+    provider_transaction_id: str | None = None
     status: str
-    idempotency_key: Optional[str] = None
-    failure_reason: Optional[str] = None
+    idempotency_key: str | None = None
+    failure_reason: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -40,4 +47,4 @@ class PaymentResponse(BaseResponse):
 class StripeWebhookPayload(BaseModel):
     id: str
     type: str
-    data: Dict[str, Any]
+    data: dict[str, Any]

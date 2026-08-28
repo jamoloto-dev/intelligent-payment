@@ -1,6 +1,8 @@
 """Unit tests for API Gateway."""
+
 import pytest
 from httpx import ASGITransport, AsyncClient
+
 from services.api_gateway.app.main import app
 
 

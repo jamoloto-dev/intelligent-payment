@@ -7,11 +7,13 @@ Using an Azure Function provides:
 2. Independent elasticity to handle sudden spikes in payment events.
 3. Isolated compliance auditing detached from transactional microservices.
 """
+
 import json
 import logging
 import os
-from datetime import datetime, timezone
 import uuid
+from datetime import UTC, datetime
+
 import azure.functions as func
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
@@ -22,7 +24,10 @@ def get_table_client():
     if connection_string:
         try:
             from azure.data.tables import TableClient
-            client = TableClient.from_connection_string(conn_str=connection_string, table_name="TransactionAuditLog")
+
+            client = TableClient.from_connection_string(
+                conn_str=connection_string, table_name="TransactionAuditLog"
+            )
             try:
                 client.create_table()
             except Exception:
@@ -49,7 +54,7 @@ def audit_transaction(req: func.HttpRequest) -> func.HttpResponse:
     order_id = req_body.get("order_id", "unknown_order")
     payment_id = req_body.get("payment_id", str(uuid.uuid4()))
     audit_id = str(uuid.uuid4())
-    timestamp = datetime.now(timezone.utc).isoformat()
+    timestamp = datetime.now(UTC).isoformat()
 
     audit_record = {
         "PartitionKey": event_type,
@@ -70,13 +75,15 @@ def audit_transaction(req: func.HttpRequest) -> func.HttpResponse:
             logging.error(f"Failed to persist audit entity in Azure: {e}")
 
     return func.HttpResponse(
-        json.dumps({
-            "status": "SUCCESS",
-            "audit_id": audit_id,
-            "event_type": event_type,
-            "order_id": order_id,
-            "timestamp": timestamp,
-        }),
+        json.dumps(
+            {
+                "status": "SUCCESS",
+                "audit_id": audit_id,
+                "event_type": event_type,
+                "order_id": order_id,
+                "timestamp": timestamp,
+            }
+        ),
         status_code=201,
         mimetype="application/json",
     )

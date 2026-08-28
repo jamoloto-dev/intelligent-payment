@@ -1,10 +1,19 @@
 """Payment Service main FastAPI application entrypoint."""
+
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+from services.payment_service.app.config.settings import settings
+from services.payment_service.app.providers.mock_provider import MockPaymentProvider
+from services.payment_service.app.providers.stripe_provider import StripePaymentProvider
+from services.payment_service.app.repositories.payment_repository import PaymentRepository
+from services.payment_service.app.routers.payment_router import get_payment_service, payment_router
+from services.payment_service.app.services.payment_service import PaymentService
 from shared.database.base import Base
 from shared.database.session import check_db_health, create_db_engine, create_session_factory
 from shared.events.redis_client import EventBus
@@ -12,12 +21,6 @@ from shared.logging.logger import get_logger
 from shared.logging.middleware import RequestLoggingMiddleware
 from shared.schemas.common import HealthCheckResponse, HealthStatus
 from shared.schemas.errors import HTTPErrorResponse
-from services.payment_service.app.config.settings import settings
-from services.payment_service.app.providers.mock_provider import MockPaymentProvider
-from services.payment_service.app.providers.stripe_provider import StripePaymentProvider
-from services.payment_service.app.repositories.payment_repository import PaymentRepository
-from services.payment_service.app.routers.payment_router import get_payment_service, payment_router
-from services.payment_service.app.services.payment_service import PaymentService
 
 logger = get_logger("payment-service")
 
@@ -75,6 +78,7 @@ async def get_payment_service_dependency() -> AsyncGenerator[PaymentService, Non
     async with SessionLocal() as session:
         repo = PaymentRepository(session)
         yield PaymentService(repository=repo, provider=payment_provider, event_bus=event_bus)
+
 
 app.dependency_overrides[get_payment_service] = get_payment_service_dependency
 

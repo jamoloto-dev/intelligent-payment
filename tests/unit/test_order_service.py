@@ -1,16 +1,19 @@
 """Unit and API tests for Order Service."""
+
 from decimal import Decimal
+
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
-from shared.authentication.jwt import JWTManager
-from shared.database.base import Base
+
 from services.order_service.app.config.settings import settings
 from services.order_service.app.main import app
 from services.order_service.app.repositories.order_repository import OrderRepository
 from services.order_service.app.routers.order_router import get_order_service
 from services.order_service.app.services.order_service import OrderService
+from shared.authentication.jwt import JWTManager
+from shared.database.base import Base
 
 test_engine = create_async_engine(
     "sqlite+aiosqlite:///:memory:",
@@ -23,8 +26,11 @@ TestingSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expir
 
 class MockProductClient:
     """Mock product client simulating stock reservation."""
+
     def __init__(self):
-        self.inventory = {"prod_100": {"name": "Test Phone", "price": Decimal("500.00"), "stock": 10}}
+        self.inventory = {
+            "prod_100": {"name": "Test Phone", "price": Decimal("500.00"), "stock": 10}
+        }
 
     async def reserve_stock(self, product_id: str, quantity: int):
         if product_id not in self.inventory:
@@ -66,7 +72,9 @@ async def setup_test_db():
 
 
 jwt_mgr = JWTManager(secret_key=settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
-user_token = jwt_mgr.create_access_token(user_id="usr_order_test", email="order@example.com", role="USER")
+user_token = jwt_mgr.create_access_token(
+    user_id="usr_order_test", email="order@example.com", role="USER"
+)
 
 
 @pytest.mark.asyncio
@@ -79,9 +87,9 @@ async def test_order_creation_and_retrieval():
             json={
                 "items": [{"product_id": "prod_100", "quantity": 2}],
                 "shipping_address": "123 Main St, Tech City",
-                "currency": "USD"
+                "currency": "USD",
             },
-            headers={"Authorization": f"Bearer {user_token}"}
+            headers={"Authorization": f"Bearer {user_token}"},
         )
         assert create_res.status_code == 201
         order_data = create_res.json()
@@ -94,7 +102,9 @@ async def test_order_creation_and_retrieval():
         order_id = order_data["id"]
 
         # Retrieve order
-        get_res = await ac.get(f"/orders/{order_id}", headers={"Authorization": f"Bearer {user_token}"})
+        get_res = await ac.get(
+            f"/orders/{order_id}", headers={"Authorization": f"Bearer {user_token}"}
+        )
         assert get_res.status_code == 200
         assert get_res.json()["id"] == order_id
 
@@ -108,13 +118,15 @@ async def test_order_cancellation():
             json={
                 "items": [{"product_id": "prod_100", "quantity": 1}],
                 "shipping_address": "456 Market St",
-                "currency": "USD"
+                "currency": "USD",
             },
-            headers={"Authorization": f"Bearer {user_token}"}
+            headers={"Authorization": f"Bearer {user_token}"},
         )
         order_id = create_res.json()["id"]
 
         # Cancel order
-        cancel_res = await ac.post(f"/orders/{order_id}/cancel", headers={"Authorization": f"Bearer {user_token}"})
+        cancel_res = await ac.post(
+            f"/orders/{order_id}/cancel", headers={"Authorization": f"Bearer {user_token}"}
+        )
         assert cancel_res.status_code == 200
         assert cancel_res.json()["status"] == "CANCELLED"

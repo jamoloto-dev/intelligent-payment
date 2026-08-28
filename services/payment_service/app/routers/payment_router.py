@@ -1,15 +1,18 @@
 """Payment Service API endpoints."""
-from typing import List, Optional
+
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
-from shared.authentication.dependencies import get_current_user_token, require_admin, require_authenticated
-from shared.authentication.jwt import TokenPayload
-from shared.schemas.common import UserRole
+
 from services.payment_service.app.schemas.payment import (
     PaymentCreateRequest,
     PaymentRefundRequest,
     PaymentResponse,
 )
 from services.payment_service.app.services.payment_service import PaymentService
+from shared.authentication.dependencies import (
+    require_authenticated,
+)
+from shared.authentication.jwt import TokenPayload
+from shared.schemas.common import UserRole
 
 payment_router = APIRouter(prefix="/payments", tags=["Payments"])
 
@@ -45,7 +48,7 @@ async def get_payment(
     return payment
 
 
-@payment_router.get("/order/{order_id}", response_model=List[PaymentResponse])
+@payment_router.get("/order/{order_id}", response_model=list[PaymentResponse])
 async def get_payments_for_order(
     order_id: str,
     current_user: TokenPayload = Depends(require_authenticated),
@@ -53,7 +56,11 @@ async def get_payments_for_order(
 ):
     """Retrieve payment history for a specific order."""
     payments = await service.get_by_order(order_id)
-    if payments and current_user.role != UserRole.ADMIN.value and payments[0].user_id != current_user.sub:
+    if (
+        payments
+        and current_user.role != UserRole.ADMIN.value
+        and payments[0].user_id != current_user.sub
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"error": "FORBIDDEN", "message": "Access denied to order payments"},
@@ -81,7 +88,7 @@ async def refund_payment(
 @payment_router.post("/webhook/stripe")
 async def stripe_webhook(
     request: Request,
-    stripe_signature: Optional[str] = Header(None, alias="stripe-signature"),
+    stripe_signature: str | None = Header(None, alias="stripe-signature"),
     service: PaymentService = Depends(get_payment_service),
 ):
     """Handle asynchronous Stripe webhook callbacks."""

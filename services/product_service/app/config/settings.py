@@ -1,4 +1,5 @@
 """Product Service configuration settings."""
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 

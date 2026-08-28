@@ -1,7 +1,7 @@
 """Notification Service business logic layer."""
-from typing import Dict, List, Optional
+
 import uuid
-from shared.logging.logger import get_logger
+
 from services.notification_service.app.channels.base import NotificationChannel
 from services.notification_service.app.channels.email_channel import EmailNotificationChannel
 from services.notification_service.app.channels.log_channel import LogNotificationChannel
@@ -12,6 +12,7 @@ from services.notification_service.app.schemas.notification import (
     NotificationType,
 )
 from services.notification_service.app.storage.storage import NotificationStorage
+from shared.logging.logger import get_logger
 
 logger = get_logger("notification-service")
 
@@ -21,8 +22,8 @@ class NotificationService:
 
     def __init__(
         self,
-        channels: Optional[Dict[NotificationType, NotificationChannel]] = None,
-        storage: Optional[NotificationStorage] = None,
+        channels: dict[NotificationType, NotificationChannel] | None = None,
+        storage: NotificationStorage | None = None,
     ):
         self.channels = channels or {
             NotificationType.LOG: LogNotificationChannel(),
@@ -52,8 +53,10 @@ class NotificationService:
         await self.storage.save(notification)
         return notification
 
-    async def get_by_id(self, notification_id: str) -> Optional[NotificationResponse]:
+    async def get_by_id(self, notification_id: str) -> NotificationResponse | None:
         return await self.storage.get_by_id(notification_id)
 
-    async def list_notifications(self, recipient: Optional[str] = None, limit: int = 50) -> List[NotificationResponse]:
+    async def list_notifications(
+        self, recipient: str | None = None, limit: int = 50
+    ) -> list[NotificationResponse]:
         return await self.storage.list_notifications(recipient=recipient, limit=limit)

@@ -1,8 +1,11 @@
 """Notification schemas."""
-from datetime import datetime, timezone
+
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import Any
+
 from pydantic import BaseModel, Field
+
 from shared.schemas.common import BaseResponse
 
 
@@ -24,8 +27,8 @@ class NotificationSendRequest(BaseModel):
     subject: str = Field(..., min_length=1, max_length=255)
     body: str = Field(..., min_length=1)
     notification_type: NotificationType = Field(default=NotificationType.LOG)
-    event_type: Optional[str] = None
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    event_type: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class NotificationResponse(BaseResponse):
@@ -35,6 +38,6 @@ class NotificationResponse(BaseResponse):
     body: str
     notification_type: NotificationType
     status: NotificationStatus
-    event_type: Optional[str] = None
-    sent_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    metadata: Dict[str, Any] = {}
+    event_type: str | None = None
+    sent_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    metadata: dict[str, Any] = {}

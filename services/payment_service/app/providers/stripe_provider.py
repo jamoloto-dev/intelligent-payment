@@ -1,14 +1,17 @@
 """Stripe payment gateway integration."""
+
 from decimal import Decimal
-from typing import Any, Dict, Optional
+from typing import Any
+
 import stripe
-from shared.logging.logger import get_logger
+
 from services.payment_service.app.config.settings import settings
 from services.payment_service.app.providers.base import (
     PaymentProviderInterface,
     ProviderChargeResult,
     ProviderRefundResult,
 )
+from shared.logging.logger import get_logger
 
 logger = get_logger("stripe-provider")
 
@@ -18,8 +21,8 @@ class StripePaymentProvider(PaymentProviderInterface):
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        webhook_secret: Optional[str] = None,
+        api_key: str | None = None,
+        webhook_secret: str | None = None,
     ):
         self.api_key = api_key or settings.STRIPE_SECRET_KEY
         self.webhook_secret = webhook_secret or settings.STRIPE_WEBHOOK_SECRET
@@ -30,13 +33,13 @@ class StripePaymentProvider(PaymentProviderInterface):
         amount: Decimal,
         currency: str,
         payment_method_id: str,
-        idempotency_key: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        idempotency_key: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> ProviderChargeResult:
         try:
             # Stripe amounts are in cents
             amount_cents = int(amount * 100)
-            
+
             # Create and confirm PaymentIntent
             intent = stripe.PaymentIntent.create(
                 amount=amount_cents,
@@ -47,7 +50,7 @@ class StripePaymentProvider(PaymentProviderInterface):
                 idempotency_key=idempotency_key,
                 metadata=metadata or {},
             )
-            
+
             success = intent.status == "succeeded"
             return ProviderChargeResult(
                 success=success,
@@ -94,8 +97,8 @@ class StripePaymentProvider(PaymentProviderInterface):
     async def refund_charge(
         self,
         transaction_id: str,
-        amount: Optional[Decimal] = None,
-        reason: Optional[str] = None,
+        amount: Decimal | None = None,
+        reason: str | None = None,
     ) -> ProviderRefundResult:
         try:
             amount_cents = int(amount * 100) if amount else None
@@ -121,7 +124,7 @@ class StripePaymentProvider(PaymentProviderInterface):
                 error_message=e.user_message or str(e),
             )
 
-    def verify_webhook(self, payload: bytes, signature_header: str) -> Dict[str, Any]:
+    def verify_webhook(self, payload: bytes, signature_header: str) -> dict[str, Any]:
         try:
             event = stripe.Webhook.construct_event(
                 payload=payload,

@@ -1,12 +1,15 @@
 """User database model."""
+
 from sqlalchemy import Boolean, Enum, Index, String
 from sqlalchemy.orm import Mapped, mapped_column
+
 from shared.database.base import Base, TimestampMixin, UUIDMixin
 from shared.schemas.common import UserRole
 
 
 class User(Base, UUIDMixin, TimestampMixin):
     """User entity representing platform customers and administrators."""
+
     __tablename__ = "users"
 
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
@@ -20,6 +23,4 @@ class User(Base, UUIDMixin, TimestampMixin):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    __table_args__ = (
-        Index("ix_users_role_created", "role", "created_at"),
-    )
+    __table_args__ = (Index("ix_users_role_created", "role", "created_at"),)

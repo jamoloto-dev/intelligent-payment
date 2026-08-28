@@ -1,11 +1,10 @@
 """Unit and API tests for Fraud Detection Service."""
-from datetime import datetime, timezone
+
 import pytest
 from httpx import ASGITransport, AsyncClient
+
 from services.fraud_service.app.main import app
 from services.fraud_service.app.rules.rules import (
-    AccountAgeRule,
-    FailedPaymentsRule,
     GeolocationMismatchRule,
     HighAmountRule,
     VelocityRule,
@@ -45,7 +44,11 @@ def test_fraud_velocity_rule():
     rule = VelocityRule(max_hourly_velocity=5)
 
     req_burst = FraudCheckRequest(
-        transaction_id="tx_v", order_id="ord_v", user_id="usr_v", amount=50.0, recent_transactions_count_1h=6
+        transaction_id="tx_v",
+        order_id="ord_v",
+        user_id="usr_v",
+        amount=50.0,
+        recent_transactions_count_1h=6,
     )
     res = rule.evaluate(req_burst)
     assert res.triggered
@@ -73,15 +76,18 @@ async def test_fraud_api_evaluation_and_decision():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         # 1. Clean transaction -> APPROVE
-        clean_res = await ac.post("/fraud/check", json={
-            "transaction_id": "tx_clean_100",
-            "order_id": "ord_100",
-            "user_id": "usr_100",
-            "amount": 49.99,
-            "currency": "USD",
-            "recent_transactions_count_1h": 0,
-            "recent_failed_payments_24h": 0
-        })
+        clean_res = await ac.post(
+            "/fraud/check",
+            json={
+                "transaction_id": "tx_clean_100",
+                "order_id": "ord_100",
+                "user_id": "usr_100",
+                "amount": 49.99,
+                "currency": "USD",
+                "recent_transactions_count_1h": 0,
+                "recent_failed_payments_24h": 0,
+            },
+        )
         assert clean_res.status_code == 200
         clean_data = clean_res.json()
         assert clean_data["decision"] == "APPROVE"
@@ -89,17 +95,20 @@ async def test_fraud_api_evaluation_and_decision():
         assert clean_data["risk_score"] == 0.0
 
         # 2. Critical Fraud Transaction -> REJECT
-        fraud_res = await ac.post("/fraud/check", json={
-            "transaction_id": "tx_fraud_999",
-            "order_id": "ord_999",
-            "user_id": "usr_999",
-            "amount": 7500.00,
-            "currency": "USD",
-            "recent_transactions_count_1h": 8,
-            "recent_failed_payments_24h": 4,
-            "billing_country": "US",
-            "ip_country": "RU"
-        })
+        fraud_res = await ac.post(
+            "/fraud/check",
+            json={
+                "transaction_id": "tx_fraud_999",
+                "order_id": "ord_999",
+                "user_id": "usr_999",
+                "amount": 7500.00,
+                "currency": "USD",
+                "recent_transactions_count_1h": 8,
+                "recent_failed_payments_24h": 4,
+                "billing_country": "US",
+                "ip_country": "RU",
+            },
+        )
         assert fraud_res.status_code == 200
         fraud_data = fraud_res.json()
         assert fraud_data["decision"] == "REJECT"

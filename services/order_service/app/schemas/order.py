@@ -1,8 +1,10 @@
 """Order request and response schemas."""
+
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional
+
 from pydantic import BaseModel, Field
+
 from shared.schemas.common import BaseResponse, OrderStatus
 
 
@@ -12,14 +14,16 @@ class OrderItemCreateRequest(BaseModel):
 
 
 class OrderCreateRequest(BaseModel):
-    items: List[OrderItemCreateRequest] = Field(..., min_length=1, description="Order must contain at least 1 item")
+    items: list[OrderItemCreateRequest] = Field(
+        ..., min_length=1, description="Order must contain at least 1 item"
+    )
     shipping_address: str = Field(..., min_length=5, description="Valid delivery address")
-    currency: Optional[str] = Field(default="USD", min_length=3, max_length=3)
+    currency: str | None = Field(default="USD", min_length=3, max_length=3)
 
 
 class OrderUpdateRequest(BaseModel):
-    shipping_address: Optional[str] = Field(None, min_length=5)
-    status: Optional[OrderStatus] = None
+    shipping_address: str | None = Field(None, min_length=5)
+    status: OrderStatus | None = None
 
 
 class OrderItemResponse(BaseResponse):
@@ -40,9 +44,9 @@ class OrderResponse(BaseResponse):
     shipping_address: str
     created_at: datetime
     updated_at: datetime
-    items: List[OrderItemResponse] = []
+    items: list[OrderItemResponse] = []
 
 
 class OrderStatusUpdateRequest(BaseModel):
     status: OrderStatus
-    reason: Optional[str] = None
+    reason: str | None = None

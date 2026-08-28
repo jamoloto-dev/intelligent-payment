@@ -1,12 +1,16 @@
 """Product database model."""
+
 from decimal import Decimal
+
 from sqlalchemy import Boolean, CheckConstraint, Index, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
+
 from shared.database.base import Base, TimestampMixin, UUIDMixin
 
 
 class Product(Base, UUIDMixin, TimestampMixin):
     """Product catalog item with inventory tracking."""
+
     __tablename__ = "products"
 
     name: Mapped[str] = mapped_column(String(200), index=True, nullable=False)

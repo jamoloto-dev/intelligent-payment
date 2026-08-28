@@ -1,21 +1,23 @@
 """Order service business logic layer."""
+
 from decimal import Decimal
-from typing import Any, Callable, Dict, List, Optional, Tuple
-from fastapi import HTTPException, status
+from typing import Any
+
 import httpx
-from shared.events.redis_client import EventBus
-from shared.logging.logger import get_logger
-from shared.schemas.common import OrderStatus
-from shared.schemas.events import OrderCancelledEvent, OrderCreatedEvent, OrderItemPayload
+from fastapi import HTTPException, status
+
 from services.order_service.app.config.settings import settings
 from services.order_service.app.models.order import Order, OrderItem
 from services.order_service.app.repositories.order_repository import OrderRepository
 from services.order_service.app.schemas.order import (
     OrderCreateRequest,
     OrderResponse,
-    OrderStatusUpdateRequest,
     OrderUpdateRequest,
 )
+from shared.events.redis_client import EventBus
+from shared.logging.logger import get_logger
+from shared.schemas.common import OrderStatus
+from shared.schemas.events import OrderCancelledEvent, OrderCreatedEvent, OrderItemPayload
 
 logger = get_logger("order-service")
 
@@ -26,14 +28,14 @@ class OrderService:
     def __init__(
         self,
         repository: OrderRepository,
-        event_bus: Optional[EventBus] = None,
-        product_client: Optional[Any] = None,
+        event_bus: EventBus | None = None,
+        product_client: Any | None = None,
     ):
         self.repository = repository
         self.event_bus = event_bus
         self.product_client = product_client
 
-    async def _reserve_product(self, product_id: str, quantity: int) -> Dict[str, Any]:
+    async def _reserve_product(self, product_id: str, quantity: int) -> dict[str, Any]:
         """Call Product Service to atomically reserve stock."""
         if self.product_client:
             # Custom or mocked client
@@ -44,12 +46,18 @@ class OrderService:
             try:
                 resp = await client.post(url, json={"quantity": quantity})
                 if resp.status_code != 200:
-                    error_data = resp.json() if resp.headers.get("content-type") == "application/json" else {}
+                    error_data = (
+                        resp.json()
+                        if resp.headers.get("content-type") == "application/json"
+                        else {}
+                    )
                     raise HTTPException(
                         status_code=resp.status_code,
                         detail={
                             "error": error_data.get("error", "INVENTORY_ERROR"),
-                            "message": error_data.get("message", f"Failed to reserve product {product_id}"),
+                            "message": error_data.get(
+                                "message", f"Failed to reserve product {product_id}"
+                            ),
                         },
                     )
                 return resp.json()
@@ -57,7 +65,10 @@ class OrderService:
                 logger.error(f"Failed to communicate with Product Service: {e}")
                 raise HTTPException(
                     status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                    detail={"error": "PRODUCT_SERVICE_UNAVAILABLE", "message": "Product Service is currently unreachable"},
+                    detail={
+                        "error": "PRODUCT_SERVICE_UNAVAILABLE",
+                        "message": "Product Service is currently unreachable",
+                    },
                 )
 
     async def _release_product(self, product_id: str, quantity: int) -> None:
@@ -73,7 +84,9 @@ class OrderService:
             except Exception as e:
                 logger.error(f"Failed to release product stock for {product_id}: {e}")
 
-    async def create_order(self, user_id: str, user_email: Optional[str], req: OrderCreateRequest) -> OrderResponse:
+    async def create_order(
+        self, user_id: str, user_email: str | None, req: OrderCreateRequest
+    ) -> OrderResponse:
         reserved_items = []
         total_amount = Decimal("0.00")
 
@@ -84,13 +97,15 @@ class OrderService:
                 unit_price = Decimal(str(res.get("unit_price", "0.00")))
                 subtotal = unit_price * item_req.quantity
                 total_amount += subtotal
-                reserved_items.append({
-                    "product_id": item_req.product_id,
-                    "product_name": res.get("product_name", f"Product {item_req.product_id}"),
-                    "quantity": item_req.quantity,
-                    "unit_price": unit_price,
-                    "subtotal": subtotal,
-                })
+                reserved_items.append(
+                    {
+                        "product_id": item_req.product_id,
+                        "product_name": res.get("product_name", f"Product {item_req.product_id}"),
+                        "quantity": item_req.quantity,
+                        "unit_price": unit_price,
+                        "subtotal": subtotal,
+                    }
+                )
         except Exception as exc:
             # Compensating transaction: release all already-reserved items
             for item in reserved_items:
@@ -116,7 +131,9 @@ class OrderService:
             order.items.append(order_item)
 
         created_order = await self.repository.create(order)
-        logger.info(f"Created order: {created_order.id} for user {user_id} with total {total_amount}")
+        logger.info(
+            f"Created order: {created_order.id} for user {user_id} with total {total_amount}"
+        )
 
         # 3. Publish OrderCreated event
         if self.event_bus:
@@ -165,7 +182,9 @@ class OrderService:
         updated = await self.repository.update(order)
         return OrderResponse.model_validate(updated)
 
-    async def cancel_order(self, order_id: str, user_id: str, is_admin: bool = False, reason: Optional[str] = None) -> OrderResponse:
+    async def cancel_order(
+        self, order_id: str, user_id: str, is_admin: bool = False, reason: str | None = None
+    ) -> OrderResponse:
         order = await self.repository.get_by_id(order_id)
         if not order:
             raise HTTPException(
@@ -180,7 +199,10 @@ class OrderService:
         if order.status in [OrderStatus.CANCELLED.value, OrderStatus.REFUNDED.value]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"error": "INVALID_ORDER_STATE", "message": f"Order is already {order.status}"},
+                detail={
+                    "error": "INVALID_ORDER_STATE",
+                    "message": f"Order is already {order.status}",
+                },
             )
 
         order.status = OrderStatus.CANCELLED.value
@@ -198,7 +220,9 @@ class OrderService:
         logger.info(f"Order {order_id} was successfully cancelled")
         return OrderResponse.model_validate(updated)
 
-    async def update_status(self, order_id: str, new_status: OrderStatus, reason: Optional[str] = None) -> OrderResponse:
+    async def update_status(
+        self, order_id: str, new_status: OrderStatus, reason: str | None = None
+    ) -> OrderResponse:
         order = await self.repository.get_by_id(order_id)
         if not order:
             raise HTTPException(
@@ -212,11 +236,11 @@ class OrderService:
 
     async def list_orders(
         self,
-        user_id: Optional[str] = None,
-        status_filter: Optional[str] = None,
+        user_id: str | None = None,
+        status_filter: str | None = None,
         page: int = 1,
         page_size: int = 20,
-    ) -> Tuple[List[OrderResponse], int]:
+    ) -> tuple[list[OrderResponse], int]:
         orders, total = await self.repository.list_orders(
             user_id=user_id, status=status_filter, page=page, page_size=page_size
         )

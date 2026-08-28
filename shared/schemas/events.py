@@ -1,23 +1,26 @@
 """Event schemas for asynchronous message passing."""
-from datetime import datetime, timezone
-from decimal import Decimal
-from typing import Any, Dict, List, Optional
+
 import uuid
+from datetime import UTC, datetime
+from decimal import Decimal
+from typing import Any
+
 from pydantic import BaseModel, Field
 
 
 class BaseEvent(BaseModel):
     """Base event payload structure."""
+
     event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     event_type: str
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     source_service: str = Field(default="system")
-    correlation_id: Optional[str] = None
+    correlation_id: str | None = None
 
 
 class OrderItemPayload(BaseModel):
     product_id: str
-    product_name: Optional[str] = None
+    product_name: str | None = None
     quantity: int
     unit_price: Decimal
     subtotal: Decimal
@@ -30,8 +33,8 @@ class OrderCreatedEvent(BaseEvent):
     user_id: str
     total_amount: Decimal
     currency: str
-    items: List[OrderItemPayload]
-    user_email: Optional[str] = None
+    items: list[OrderItemPayload]
+    user_email: str | None = None
 
 
 class OrderCancelledEvent(BaseEvent):
@@ -39,7 +42,7 @@ class OrderCancelledEvent(BaseEvent):
     source_service: str = "order-service"
     order_id: str
     user_id: str
-    reason: Optional[str] = None
+    reason: str | None = None
 
 
 class PaymentCreatedEvent(BaseEvent):
@@ -63,7 +66,7 @@ class PaymentCompletedEvent(BaseEvent):
     currency: str
     provider: str
     provider_transaction_id: str
-    user_email: Optional[str] = None
+    user_email: str | None = None
 
 
 class PaymentFailedEvent(BaseEvent):
@@ -76,7 +79,7 @@ class PaymentFailedEvent(BaseEvent):
     currency: str
     provider: str
     reason: str
-    user_email: Optional[str] = None
+    user_email: str | None = None
 
 
 class PaymentRefundedEvent(BaseEvent):
@@ -89,7 +92,7 @@ class PaymentRefundedEvent(BaseEvent):
     currency: str
     provider: str
     refund_id: str
-    user_email: Optional[str] = None
+    user_email: str | None = None
 
 
 class FraudReviewRequiredEvent(BaseEvent):
@@ -101,5 +104,5 @@ class FraudReviewRequiredEvent(BaseEvent):
     risk_score: float
     risk_level: str
     decision: str
-    reasons: List[str]
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    reasons: list[str]
+    metadata: dict[str, Any] = Field(default_factory=dict)

@@ -1,8 +1,11 @@
 """FastAPI Authentication and Authorization dependencies."""
+
 import os
-from typing import Callable, List, Optional
+from collections.abc import Callable
+
 from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
 from shared.authentication.jwt import JWTManager, TokenPayload
 from shared.logging.logger import user_id_ctx
 
@@ -19,7 +22,7 @@ def get_jwt_manager() -> JWTManager:
 
 
 async def get_current_user_token(
-    credentials: Optional[HTTPAuthorizationCredentials] = Security(security),
+    credentials: HTTPAuthorizationCredentials | None = Security(security),
 ) -> TokenPayload:
     """Validate Bearer token and return the payload."""
     if not credentials or not credentials.credentials:
@@ -41,8 +44,9 @@ async def get_current_user_token(
         )
 
 
-def require_roles(allowed_roles: List[str]) -> Callable:
+def require_roles(allowed_roles: list[str]) -> Callable:
     """Dependency factory checking that current user has one of allowed roles."""
+
     async def role_checker(
         current_user: TokenPayload = Depends(get_current_user_token),
     ) -> TokenPayload:

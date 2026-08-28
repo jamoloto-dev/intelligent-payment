@@ -1,23 +1,26 @@
 """JWT token creation and decoding."""
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
 import jwt
 from pydantic import BaseModel
 
 
 class TokenPayload(BaseModel):
     """Payload decoded from a valid JWT."""
+
     sub: str  # user_id
     email: str
     role: str
     exp: int
     iat: int
-    jti: Optional[str] = None
+    jti: str | None = None
 
 
 class JWTManager:
     """Manages JWT generation and verification."""
-    
+
     def __init__(
         self,
         secret_key: str = "default_secret_for_dev_min_32_chars_long_entropy_key",
@@ -33,16 +36,16 @@ class JWTManager:
         user_id: str,
         email: str,
         role: str,
-        expires_delta: Optional[timedelta] = None,
-        custom_claims: Optional[Dict[str, Any]] = None,
+        expires_delta: timedelta | None = None,
+        custom_claims: dict[str, Any] | None = None,
     ) -> str:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if expires_delta:
             expire = now + expires_delta
         else:
             expire = now + timedelta(minutes=self.access_token_expire_minutes)
 
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "sub": str(user_id),
             "email": email,
             "role": role,

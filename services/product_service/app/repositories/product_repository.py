@@ -1,7 +1,8 @@
 """Product repository for database access."""
-from typing import List, Optional, Tuple
+
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from services.product_service.app.models.product import Product
 
 
@@ -11,7 +12,7 @@ class ProductRepository:
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get_by_id(self, product_id: str, for_update: bool = False) -> Optional[Product]:
+    async def get_by_id(self, product_id: str, for_update: bool = False) -> Product | None:
         stmt = select(Product).where(Product.id == product_id)
         if for_update:
             stmt = stmt.with_for_update()
@@ -37,9 +38,9 @@ class ProductRepository:
         self,
         page: int = 1,
         page_size: int = 20,
-        search: Optional[str] = None,
+        search: str | None = None,
         only_active: bool = True,
-    ) -> Tuple[List[Product], int]:
+    ) -> tuple[list[Product], int]:
         filters = []
         if only_active:
             filters.append(Product.is_active == True)
@@ -50,6 +51,12 @@ class ProductRepository:
         total = (await self.session.execute(count_stmt)).scalar_one()
 
         offset = (page - 1) * page_size
-        stmt = select(Product).where(*filters).order_by(Product.name.asc()).offset(offset).limit(page_size)
+        stmt = (
+            select(Product)
+            .where(*filters)
+            .order_by(Product.name.asc())
+            .offset(offset)
+            .limit(page_size)
+        )
         result = await self.session.execute(stmt)
         return list(result.scalars().all()), total

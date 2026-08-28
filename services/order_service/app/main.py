@@ -1,10 +1,17 @@
 """Order Service main FastAPI application entrypoint."""
+
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+
+from services.order_service.app.config.settings import settings
+from services.order_service.app.repositories.order_repository import OrderRepository
+from services.order_service.app.routers.order_router import get_order_service, order_router
+from services.order_service.app.services.order_service import OrderService
 from shared.database.base import Base
 from shared.database.session import check_db_health, create_db_engine, create_session_factory
 from shared.events.redis_client import EventBus
@@ -12,10 +19,6 @@ from shared.logging.logger import get_logger
 from shared.logging.middleware import RequestLoggingMiddleware
 from shared.schemas.common import HealthCheckResponse, HealthStatus, OrderStatus
 from shared.schemas.errors import HTTPErrorResponse
-from services.order_service.app.config.settings import settings
-from services.order_service.app.repositories.order_repository import OrderRepository
-from services.order_service.app.routers.order_router import get_order_service, order_router
-from services.order_service.app.services.order_service import OrderService
 
 logger = get_logger("order-service")
 
@@ -48,7 +51,9 @@ async def handle_payment_failed(event_data: dict):
     async with SessionLocal() as session:
         service = OrderService(OrderRepository(session), event_bus=event_bus)
         try:
-            await service.update_status(order_id, OrderStatus.FAILED, reason=event_data.get("reason"))
+            await service.update_status(
+                order_id, OrderStatus.FAILED, reason=event_data.get("reason")
+            )
         except Exception as e:
             logger.error(f"Failed to update order {order_id} on PaymentFailed: {e}")
 
@@ -97,6 +102,7 @@ async def get_order_service_dependency() -> AsyncGenerator[OrderService, None]:
     async with SessionLocal() as session:
         repo = OrderRepository(session)
         yield OrderService(repo, event_bus=event_bus)
+
 
 app.dependency_overrides[get_order_service] = get_order_service_dependency
 

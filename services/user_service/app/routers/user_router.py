@@ -1,11 +1,8 @@
 """User service API endpoints."""
-from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from shared.authentication.dependencies import get_current_user_token, require_admin, require_authenticated
-from shared.authentication.jwt import TokenPayload
-from shared.schemas.common import PaginatedResponse, UserRole
-from services.user_service.app.models.user import User
+
 from services.user_service.app.repositories.user_repository import UserRepository
 from services.user_service.app.schemas.user import (
     TokenResponse,
@@ -15,6 +12,13 @@ from services.user_service.app.schemas.user import (
     UserUpdateRequest,
 )
 from services.user_service.app.services.user_service import UserService
+from shared.authentication.dependencies import (
+    get_current_user_token,
+    require_admin,
+    require_authenticated,
+)
+from shared.authentication.jwt import TokenPayload
+from shared.schemas.common import PaginatedResponse, UserRole
 
 auth_router = APIRouter(prefix="/auth", tags=["Authentication"])
 users_router = APIRouter(prefix="/users", tags=["Users"])

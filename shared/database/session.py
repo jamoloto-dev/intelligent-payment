@@ -1,5 +1,5 @@
 """Database session management and connection pooling."""
-from collections.abc import AsyncGenerator
+
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -15,7 +15,7 @@ def create_db_engine(database_url: str, echo: bool = False) -> AsyncEngine:
     if "sqlite" in database_url:
         connect_args["check_same_thread"] = False
         return create_async_engine(database_url, echo=echo, connect_args=connect_args)
-    
+
     return create_async_engine(
         database_url,
         echo=echo,

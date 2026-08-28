@@ -1,14 +1,16 @@
 """Abstract Base Classes for Fraud Detection Rules."""
+
 from abc import ABC, abstractmethod
-from typing import List, Optional
+
 from pydantic import BaseModel
+
 from services.fraud_service.app.schemas.fraud import FraudCheckRequest
 
 
 class RuleEvaluationResult(BaseModel):
     rule_name: str
     score_increment: float
-    reason: Optional[str] = None
+    reason: str | None = None
     triggered: bool = False
 
 

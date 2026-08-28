@@ -1,8 +1,10 @@
 """Email notification delivery channel."""
-from typing import Any, Dict
-from shared.logging.logger import get_logger
+
+from typing import Any
+
 from services.notification_service.app.channels.base import NotificationChannel
 from services.notification_service.app.config.settings import settings
+from shared.logging.logger import get_logger
 
 logger = get_logger("email-channel")
 
@@ -10,7 +12,7 @@ logger = get_logger("email-channel")
 class EmailNotificationChannel(NotificationChannel):
     """Email delivery channel via SMTP or cloud provider."""
 
-    async def send(self, recipient: str, subject: str, body: str, metadata: Dict[str, Any]) -> bool:
+    async def send(self, recipient: str, subject: str, body: str, metadata: dict[str, Any]) -> bool:
         if not settings.NOTIFICATION_EMAIL_ENABLED:
             logger.info(f"[Email Channel Disabled] Would send email to {recipient}: {subject}")
             return True
