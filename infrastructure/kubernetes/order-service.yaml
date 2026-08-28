@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-deployment
+  namespace: intelligent-payment
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: order-service
+  template:
+    metadata:
+      labels:
+        app: order-service
+    spec:
+      containers:
+        - name: order-service
+          image: intelligentpayment/order-service:1.0.0
+          env:
+            - name: SERVICE_NAME
+              value: "order-service"
+            - name: DATABASE_URL
+              value: "postgresql+asyncpg://postgres:change_in_production_super_secret_db_password@postgres-service:5432/order_service_db"
+            - name: REDIS_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: platform-config
+                  key: REDIS_URL
+            - name: PRODUCT_SERVICE_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: platform-config
+                  key: PRODUCT_SERVICE_URL
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: platform-secrets
+                  key: JWT_SECRET
+          ports:
+            - containerPort: 8003
+          resources:
+            requests:
+              cpu: "150m"
+              memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8003
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8003
+            initialDelaySeconds: 10
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-service
+  namespace: intelligent-payment
+spec:
+  selector:
+    app: order-service
+  ports:
+    - port: 8003
+      targetPort: 8003

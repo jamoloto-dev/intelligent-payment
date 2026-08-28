@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-config
+  namespace: intelligent-payment
+data:
+  ENVIRONMENT: "production"
+  LOG_LEVEL: "INFO"
+  DEBUG: "false"
+  POSTGRES_HOST: "postgres-service"
+  POSTGRES_PORT: "5432"
+  REDIS_URL: "redis://redis-service:6379/0"
+  MONGODB_URL: "mongodb://mongodb-service:27017"
+  USER_SERVICE_URL: "http://user-service:8001"
+  PRODUCT_SERVICE_URL: "http://product-service:8002"
+  ORDER_SERVICE_URL: "http://order-service:8003"
+  FRAUD_SERVICE_URL: "http://fraud-service:8004"
+  PAYMENT_SERVICE_URL: "http://payment-service:8005"
+  NOTIFICATION_SERVICE_URL: "http://notification-service:8006"
+  RATE_LIMIT_REQUESTS_PER_MINUTE: "120"
+  USE_MOCK_PAYMENT_PROVIDER: "false"
