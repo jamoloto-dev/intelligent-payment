@@ -145,10 +145,19 @@ docker compose up --build -d
 docker compose ps
 ```
 
-### Accessing APIs & Swagger Documentation
+### Accessing Services & User Interfaces
+- **Customer & Admin Web Application**: `http://localhost:3000`
 - **API Gateway**: `http://localhost:8000`
 - **Interactive Swagger Docs**: `http://localhost:8000/docs`
 - **ReDoc API Reference**: `http://localhost:8000/redoc`
+
+### Running the Next.js Frontend Locally
+```bash
+cd frontend
+npm install
+npm run dev
+```
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ### Stopping the System
 ```bash
