@@ -1,0 +1,235 @@
+version: '3.8'
+
+services:
+  # ============================================================================
+  # Core Infrastructure Databases & Brokers
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: ip_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-intelligent_payment_db}
+      POSTGRES_DATABASES: user_service_db,product_service_db,order_service_db,payment_service_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/docker/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - platform_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: ip_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - platform_network
+
+  mongodb:
+    image: mongo:7.0
+    container_name: ip_mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - platform_network
+
+  # ============================================================================
+  # Application Microservices
+  # ============================================================================
+  user-service:
+    build:
+      context: .
+      dockerfile: services/user_service/Dockerfile
+    container_name: ip_user_service
+    restart: unless-stopped
+    environment:
+      - SERVICE_NAME=user-service
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/user_service_db
+      - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_for_development_purposes_min32chars}
+      - JWT_ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=60
+    ports:
+      - "8001:8001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - platform_network
+
+  product-service:
+    build:
+      context: .
+      dockerfile: services/product_service/Dockerfile
+    container_name: ip_product_service
+    restart: unless-stopped
+    environment:
+      - SERVICE_NAME=product-service
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/product_service_db
+      - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_for_development_purposes_min32chars}
+    ports:
+      - "8002:8002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - platform_network
+
+  order-service:
+    build:
+      context: .
+      dockerfile: services/order_service/Dockerfile
+    container_name: ip_order_service
+    restart: unless-stopped
+    environment:
+      - SERVICE_NAME=order-service
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/order_service_db
+      - REDIS_URL=redis://redis:6379/0
+      - PRODUCT_SERVICE_URL=http://product-service:8002
+      - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_for_development_purposes_min32chars}
+    ports:
+      - "8003:8003"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+    networks:
+      - platform_network
+
+  fraud-service:
+    build:
+      context: .
+      dockerfile: services/fraud_service/Dockerfile
+    container_name: ip_fraud_service
+    restart: unless-stopped
+    environment:
+      - SERVICE_NAME=fraud-service
+      - REDIS_URL=redis://redis:6379/0
+      - MONGODB_URL=mongodb://mongodb:27017
+      - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_for_development_purposes_min32chars}
+    ports:
+      - "8004:8004"
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+    networks:
+      - platform_network
+
+  payment-service:
+    build:
+      context: .
+      dockerfile: services/payment_service/Dockerfile
+    container_name: ip_payment_service
+    restart: unless-stopped
+    environment:
+      - SERVICE_NAME=payment-service
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/payment_service_db
+      - REDIS_URL=redis://redis:6379/0
+      - FRAUD_SERVICE_URL=http://fraud-service:8004
+      - ORDER_SERVICE_URL=http://order-service:8003
+      - STRIPE_SECRET_KEY=${STRIPE_SECRET_KEY:-sk_test_placeholder}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET:-whsec_placeholder}
+      - USE_MOCK_PAYMENT_PROVIDER=${USE_MOCK_PAYMENT_PROVIDER:-true}
+      - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_for_development_purposes_min32chars}
+    ports:
+      - "8005:8005"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      fraud-service:
+        condition: service_healthy
+    networks:
+      - platform_network
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: services/notification_service/Dockerfile
+    container_name: ip_notification_service
+    restart: unless-stopped
+    environment:
+      - SERVICE_NAME=notification-service
+      - REDIS_URL=redis://redis:6379/0
+      - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_for_development_purposes_min32chars}
+    ports:
+      - "8006:8006"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - platform_network
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: services/api_gateway/Dockerfile
+    container_name: ip_api_gateway
+    restart: unless-stopped
+    environment:
+      - SERVICE_NAME=api-gateway
+      - PORT=8000
+      - USER_SERVICE_URL=http://user-service:8001
+      - PRODUCT_SERVICE_URL=http://product-service:8002
+      - ORDER_SERVICE_URL=http://order-service:8003
+      - FRAUD_SERVICE_URL=http://fraud-service:8004
+      - PAYMENT_SERVICE_URL=http://payment-service:8005
+      - NOTIFICATION_SERVICE_URL=http://notification-service:8006
+      - RATE_LIMIT_REQUESTS_PER_MINUTE=120
+      - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_for_development_purposes_min32chars}
+    ports:
+      - "8000:8000"
+    depends_on:
+      user-service:
+        condition: service_healthy
+      product-service:
+        condition: service_healthy
+      order-service:
+        condition: service_healthy
+      fraud-service:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    networks:
+      - platform_network
+
+networks:
+  platform_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  mongodb_data:
