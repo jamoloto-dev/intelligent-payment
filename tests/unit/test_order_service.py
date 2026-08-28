@@ -3,17 +3,21 @@ from decimal import Decimal
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 from shared.authentication.jwt import JWTManager
 from shared.database.base import Base
 from services.order_service.app.config.settings import settings
 from services.order_service.app.main import app
-from services.order_service.app.models.order import Order
 from services.order_service.app.repositories.order_repository import OrderRepository
 from services.order_service.app.routers.order_router import get_order_service
 from services.order_service.app.services.order_service import OrderService
 
-# In-memory test DB
-test_engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+test_engine = create_async_engine(
+    "sqlite+aiosqlite:///:memory:",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+    echo=False,
+)
 TestingSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
 
@@ -49,17 +53,17 @@ mock_product_client = MockProductClient()
 async def setup_test_db():
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    async def override_get_order_service():
+        async with TestingSessionLocal() as session:
+            yield OrderService(OrderRepository(session), product_client=mock_product_client)
+
+    app.dependency_overrides[get_order_service] = override_get_order_service
     yield
+    app.dependency_overrides.clear()
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
-
-async def override_get_order_service():
-    async with TestingSessionLocal() as session:
-        yield OrderService(OrderRepository(session), product_client=mock_product_client)
-
-
-app.dependency_overrides[get_order_service] = override_get_order_service
 
 jwt_mgr = JWTManager(secret_key=settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 user_token = jwt_mgr.create_access_token(user_id="usr_order_test", email="order@example.com", role="USER")

@@ -2,16 +2,19 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from shared.authentication.jwt import JWTManager
+from sqlalchemy.pool import StaticPool
 from shared.database.base import Base
-from services.user_service.app.config.settings import settings
 from services.user_service.app.main import app
 from services.user_service.app.repositories.user_repository import UserRepository
 from services.user_service.app.routers.user_router import get_user_service
 from services.user_service.app.services.user_service import UserService
 
-# In-memory test DB
-test_engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+test_engine = create_async_engine(
+    "sqlite+aiosqlite:///:memory:",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+    echo=False,
+)
 TestingSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
 
@@ -19,17 +22,16 @@ TestingSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expir
 async def setup_test_db():
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    async def override_get_user_service():
+        async with TestingSessionLocal() as session:
+            yield UserService(UserRepository(session))
+
+    app.dependency_overrides[get_user_service] = override_get_user_service
     yield
+    app.dependency_overrides.clear()
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
-
-
-async def override_get_user_service():
-    async with TestingSessionLocal() as session:
-        yield UserService(UserRepository(session))
-
-
-app.dependency_overrides[get_user_service] = override_get_user_service
 
 
 @pytest.mark.asyncio
@@ -104,7 +106,7 @@ async def test_user_login_success_and_failure():
 async def test_auth_me_endpoint():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        reg_res = await ac.post("/auth/register", json={
+        await ac.post("/auth/register", json={
             "email": "me.test@example.com",
             "password": "Password123!",
             "first_name": "Me",

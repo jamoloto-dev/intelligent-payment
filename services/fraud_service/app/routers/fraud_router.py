@@ -5,13 +5,16 @@ from shared.authentication.dependencies import require_admin
 from shared.authentication.jwt import TokenPayload
 from services.fraud_service.app.schemas.fraud import FraudCheckRequest, FraudCheckResponse
 from services.fraud_service.app.services.fraud_service import FraudService
+from services.fraud_service.app.storage.storage import FraudStorage
 
 fraud_router = APIRouter(prefix="/fraud", tags=["Fraud Detection"])
 
+_default_storage = FraudStorage()
+_default_service = FraudService(storage=_default_storage)
+
 
 def get_fraud_service() -> FraudService:
-    # Overridden in main.py
-    pass
+    return _default_service
 
 
 @fraud_router.post("/check", response_model=FraudCheckResponse)

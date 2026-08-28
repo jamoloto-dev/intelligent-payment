@@ -2,6 +2,7 @@
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from shared.database.base import Base
@@ -105,7 +106,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "error": "VALIDATION_ERROR",
             "message": "Invalid request parameters or payload",
             "request_id": request_id,
-            "details": exc.errors(),
+            "details": jsonable_encoder(exc.errors()),
         },
     )
 

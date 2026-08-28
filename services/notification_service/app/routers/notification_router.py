@@ -9,13 +9,16 @@ from services.notification_service.app.schemas.notification import (
     NotificationSendRequest,
 )
 from services.notification_service.app.services.notification_service import NotificationService
+from services.notification_service.app.storage.storage import NotificationStorage
 
 notification_router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
+_default_storage = NotificationStorage()
+_default_service = NotificationService(storage=_default_storage)
+
 
 def get_notification_service() -> NotificationService:
-    # Overridden in main.py
-    pass
+    return _default_service
 
 
 @notification_router.post("/send", response_model=NotificationResponse, status_code=status.HTTP_201_CREATED)

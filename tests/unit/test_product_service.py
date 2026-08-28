@@ -2,6 +2,7 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 from shared.authentication.jwt import JWTManager
 from shared.database.base import Base
 from services.product_service.app.config.settings import settings
@@ -10,8 +11,12 @@ from services.product_service.app.repositories.product_repository import Product
 from services.product_service.app.routers.product_router import get_product_service
 from services.product_service.app.services.product_service import ProductService
 
-# In-memory test DB
-test_engine = create_async_engine("sqlite+aiosqlite:///:memory:", echo=False)
+test_engine = create_async_engine(
+    "sqlite+aiosqlite:///:memory:",
+    connect_args={"check_same_thread": False},
+    poolclass=StaticPool,
+    echo=False,
+)
 TestingSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
 
@@ -19,17 +24,17 @@ TestingSessionLocal = async_sessionmaker(test_engine, class_=AsyncSession, expir
 async def setup_test_db():
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    async def override_get_product_service():
+        async with TestingSessionLocal() as session:
+            yield ProductService(ProductRepository(session))
+
+    app.dependency_overrides[get_product_service] = override_get_product_service
     yield
+    app.dependency_overrides.clear()
     async with test_engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
-
-async def override_get_product_service():
-    async with TestingSessionLocal() as session:
-        yield ProductService(ProductRepository(session))
-
-
-app.dependency_overrides[get_product_service] = override_get_product_service
 
 jwt_mgr = JWTManager(secret_key=settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 admin_token = jwt_mgr.create_access_token(user_id="admin_1", email="admin@example.com", role="ADMIN")

@@ -2,6 +2,7 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from shared.database.base import Base
@@ -17,7 +18,6 @@ from services.product_service.app.services.product_service import ProductService
 
 logger = get_logger("product-service")
 
-# Database setup
 engine = create_db_engine(settings.DATABASE_URL, echo=settings.DEBUG)
 SessionLocal = create_session_factory(engine)
 
@@ -52,7 +52,6 @@ app = FastAPI(
 app.add_middleware(RequestLoggingMiddleware, service_name=settings.SERVICE_NAME)
 
 
-# Dependency overrides for database session
 async def get_product_service_dependency() -> AsyncGenerator[ProductService, None]:
     async with SessionLocal() as session:
         repo = ProductRepository(session)
@@ -61,7 +60,6 @@ async def get_product_service_dependency() -> AsyncGenerator[ProductService, Non
 app.dependency_overrides[get_product_service] = get_product_service_dependency
 
 
-# Standard Error Handlers
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     request_id = request.headers.get("X-Request-ID")
@@ -94,7 +92,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "error": "VALIDATION_ERROR",
             "message": "Invalid request payload",
             "request_id": request_id,
-            "details": exc.errors(),
+            "details": jsonable_encoder(exc.errors()),
         },
     )
 
@@ -116,7 +114,6 @@ async def generic_exception_handler(request: Request, exc: Exception):
 app.include_router(product_router)
 
 
-# Health checks
 @app.get("/health", response_model=HealthCheckResponse, tags=["Health"])
 async def health():
     return HealthCheckResponse(service="product-service", status=HealthStatus.HEALTHY)
