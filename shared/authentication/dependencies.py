@@ -8,9 +8,14 @@ from shared.logging.logger import user_id_ctx
 
 security = HTTPBearer(auto_error=False)
 
-JWT_SECRET = os.getenv("JWT_SECRET", "default_secret_for_dev_min_32_chars_long_entropy_key")
-JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
-jwt_manager = JWTManager(secret_key=JWT_SECRET, algorithm=JWT_ALGORITHM)
+DEFAULT_JWT_SECRET = "super_secret_jwt_key_for_development_purposes_min32chars"
+
+
+def get_jwt_manager() -> JWTManager:
+    """Returns JWTManager configured with current environment secret."""
+    secret = os.getenv("JWT_SECRET", DEFAULT_JWT_SECRET)
+    algorithm = os.getenv("JWT_ALGORITHM", "HS256")
+    return JWTManager(secret_key=secret, algorithm=algorithm)
 
 
 async def get_current_user_token(
@@ -24,7 +29,8 @@ async def get_current_user_token(
             headers={"WWW-Authenticate": "Bearer"},
         )
     try:
-        payload = jwt_manager.decode_token(credentials.credentials)
+        jwt_mgr = get_jwt_manager()
+        payload = jwt_mgr.decode_token(credentials.credentials)
         user_id_ctx.set(payload.sub)
         return payload
     except ValueError as e:
