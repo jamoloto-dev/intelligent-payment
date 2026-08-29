@@ -3,7 +3,7 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -26,8 +26,8 @@ logger = get_logger("notification-service")
 
 event_bus = EventBus(redis_url=settings.REDIS_URL)
 notification_storage = NotificationStorage()
-notification_service_instance = NotificationService(storage=notification_storage)
-consumer = NotificationEventConsumer(event_bus, notification_service_instance)
+notification_service = NotificationService(storage=notification_storage)
+consumer = NotificationEventConsumer(event_bus=event_bus, notification_service=notification_service)
 
 
 @asynccontextmanager
@@ -35,7 +35,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting up Notification Service...")
     await event_bus.connect()
     consumer.register_handlers()
-    await event_bus.start_listening(channels=["orders", "payments", "fraud_events"])
+    await event_bus.start_listening(["orders", "payments", "fraud"])
     yield
     logger.info("Shutting down Notification Service...")
     await event_bus.disconnect()
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Notification Service",
-    description="Microservice for Asynchronous Multi-Channel Event Notifications and Logs",
+    description="Microservice for Asynchronous Multi-Channel Notification Dispatching",
     version="1.0.0",
     lifespan=lifespan,
     responses={
@@ -61,7 +61,7 @@ app.add_middleware(RequestLoggingMiddleware, service_name=settings.SERVICE_NAME)
 
 # Dependency injection
 async def get_notification_service_dependency() -> AsyncGenerator[NotificationService, None]:
-    yield notification_service_instance
+    yield notification_service
 
 
 app.dependency_overrides[get_notification_service] = get_notification_service_dependency
@@ -129,10 +129,13 @@ async def health():
 
 
 @app.get("/ready", response_model=HealthCheckResponse, tags=["Health"])
-async def ready():
+async def ready(response: Response):
     redis_ok = event_bus._running
+    status_val = HealthStatus.HEALTHY if redis_ok else HealthStatus.DEGRADED
+    if status_val != HealthStatus.HEALTHY:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return HealthCheckResponse(
         service="notification-service",
-        status=HealthStatus.HEALTHY if redis_ok else HealthStatus.DEGRADED,
+        status=status_val,
         dependencies={"redis": "connected" if redis_ok else "disconnected"},
     )

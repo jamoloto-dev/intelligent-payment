@@ -1,4 +1,19 @@
-FROM python:3.12-slim
+# Multi-stage build for Order Service
+FROM python:3.12-slim AS builder
+
+WORKDIR /app
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml README.md /app/
+RUN pip install --no-cache-dir --prefix=/install .
+
+FROM python:3.12-slim AS runner
 
 WORKDIR /app
 
@@ -8,13 +23,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd -g 10001 appgroup \
+    && useradd -u 10001 -g appgroup -s /sbin/nologin -d /app appuser
 
+COPY --from=builder /install /usr/local
 COPY pyproject.toml README.md /app/
 COPY shared/ /app/shared/
 COPY services/order_service/ /app/services/order_service/
 
-RUN pip install --no-cache-dir .
+RUN chown -R appuser:appgroup /app
+
+USER 10001:10001
 
 EXPOSE 8003
 

@@ -1,4 +1,4 @@
-"""Payment Service API endpoints."""
+"""Payment Service API endpoints protected with Granular RBAC and Step-Up MFA."""
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 
@@ -9,10 +9,12 @@ from services.payment_service.app.schemas.payment import (
 )
 from services.payment_service.app.services.payment_service import PaymentService
 from shared.authentication.dependencies import (
+    get_user_permissions,
     require_authenticated,
+    require_mfa_or_reauth,
+    require_permission,
 )
 from shared.authentication.jwt import TokenPayload
-from shared.schemas.common import UserRole
 
 payment_router = APIRouter(prefix="/payments", tags=["Payments"])
 
@@ -25,7 +27,7 @@ def get_payment_service() -> PaymentService:
 @payment_router.post("", response_model=PaymentResponse, status_code=status.HTTP_201_CREATED)
 async def create_payment(
     req: PaymentCreateRequest,
-    current_user: TokenPayload = Depends(require_authenticated),
+    current_user: TokenPayload = Depends(require_permission("payments:create")),
     service: PaymentService = Depends(get_payment_service),
 ):
     """Process a payment charge with fraud verification."""
@@ -38,9 +40,14 @@ async def get_payment(
     current_user: TokenPayload = Depends(require_authenticated),
     service: PaymentService = Depends(get_payment_service),
 ):
-    """Retrieve payment details."""
+    """Retrieve payment details with ownership and permission checks."""
     payment = await service.get_payment(payment_id)
-    if current_user.role != UserRole.ADMIN.value and payment.user_id != current_user.sub:
+    perms = get_user_permissions(current_user)
+
+    is_authorized = (
+        "*" in perms or "payments:read_all" in perms or payment.user_id == current_user.sub
+    )
+    if not is_authorized:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"error": "FORBIDDEN", "message": "Access denied to this payment record"},
@@ -54,17 +61,19 @@ async def get_payments_for_order(
     current_user: TokenPayload = Depends(require_authenticated),
     service: PaymentService = Depends(get_payment_service),
 ):
-    """Retrieve payment history for a specific order."""
+    """Retrieve payment history for a specific order with ownership verification."""
     payments = await service.get_by_order(order_id)
-    if (
-        payments
-        and current_user.role != UserRole.ADMIN.value
-        and payments[0].user_id != current_user.sub
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={"error": "FORBIDDEN", "message": "Access denied to order payments"},
+    perms = get_user_permissions(current_user)
+
+    if payments:
+        is_authorized = (
+            "*" in perms or "payments:read_all" in perms or payments[0].user_id == current_user.sub
         )
+        if not is_authorized:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"error": "FORBIDDEN", "message": "Access denied to order payments"},
+            )
     return payments
 
 
@@ -72,15 +81,15 @@ async def get_payments_for_order(
 async def refund_payment(
     payment_id: str,
     req: PaymentRefundRequest,
-    current_user: TokenPayload = Depends(require_authenticated),
+    current_user: TokenPayload = Depends(require_permission("payments:refund")),
+    _: TokenPayload = Depends(require_mfa_or_reauth(max_age_minutes=15)),
     service: PaymentService = Depends(get_payment_service),
 ):
-    """Refund a previously succeeded payment."""
-    is_admin = current_user.role == UserRole.ADMIN.value
+    """Refund a previously succeeded payment. Requires 'payments:refund' and MFA/Re-auth step."""
     return await service.refund_payment(
         payment_id=payment_id,
         user_id=current_user.sub,
-        is_admin=is_admin,
+        is_admin=True,
         req=req,
     )
 

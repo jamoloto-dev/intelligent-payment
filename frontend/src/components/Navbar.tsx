@@ -13,13 +13,12 @@ import {
   ChevronDown, 
   Store, 
   SlidersHorizontal,
-  LogOut,
-  Sparkles
+  LogOut
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const pathname = usePathname();
-  const { user, cartCount, setIsCartOpen, switchUser, logout } = useApp();
+  const { user, cartCount, setIsCartOpen, logout } = useApp();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   const isAdminRoute = pathname.startsWith('/admin');
@@ -93,93 +92,72 @@ export const Navbar: React.FC = () => {
               )}
             </button>
 
-            {/* User Account / Role Switcher */}
-            <div className="relative">
-              <button
-                onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
-                className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white/50 dark:bg-slate-900/50 transition-colors"
-              >
-                <div className="w-7 h-7 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center justify-center text-xs font-bold">
-                  {user?.first_name?.[0] || 'U'}
-                </div>
-                <div className="text-left hidden sm:block">
-                  <div className="text-xs font-semibold text-slate-900 dark:text-white leading-tight">
-                    {user?.first_name} {user?.last_name}
-                  </div>
-                  <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
-                    {user?.role}
-                  </div>
-                </div>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
-              </button>
-
-              {/* Dropdown Menu */}
-              {isUserMenuOpen && (
-                <div 
-                  className="absolute right-0 mt-2 w-64 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-2"
-                  onMouseLeave={() => setIsUserMenuOpen(false)}
+            {/* User Account / Navigation */}
+            {user ? (
+              <div className="relative">
+                <button
+                  onClick={() => setIsUserMenuOpen(!isUserMenuOpen)}
+                  className="flex items-center gap-2 pl-2 pr-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white/50 dark:bg-slate-900/50 transition-colors"
                 >
-                  <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-800">
-                    <p className="text-xs text-slate-400">Current Role Profile</p>
-                    <p className="text-sm font-bold text-slate-900 dark:text-white">{user?.email}</p>
+                  <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-xs font-bold">
+                    {user?.first_name?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
                   </div>
-
-                  <div className="p-2">
-                    <div className="text-[11px] uppercase font-semibold text-slate-400 px-3 py-1.5">
-                      Switch Demo Persona
+                  <div className="text-left hidden sm:block">
+                    <div className="text-xs font-semibold text-slate-900 dark:text-white leading-tight">
+                      {user?.first_name ? `${user.first_name} ${user.last_name || ''}` : user.email}
                     </div>
-                    <button
-                      onClick={() => {
-                        switchUser('USER');
-                        setIsUserMenuOpen(false);
-                      }}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-left transition-colors ${
-                        user?.role === 'USER'
-                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                      }`}
-                    >
-                      <UserCircle className="w-4 h-4 text-emerald-500" />
-                      <div>
-                        <div className="font-semibold">Alex Morgan (Customer)</div>
-                        <div className="text-[10px] opacity-70">Catalog, Cart, Checkout, Orders</div>
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={() => {
-                        switchUser('ADMIN');
-                        setIsUserMenuOpen(false);
-                      }}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs font-medium text-left transition-colors mt-1 ${
-                        user?.role === 'ADMIN'
-                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-                          : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-                      }`}
-                    >
-                      <Sparkles className="w-4 h-4 text-purple-500" />
-                      <div>
-                        <div className="font-semibold">Sarah Connor (Admin)</div>
-                        <div className="text-[10px] opacity-70">Fraud Engine, Metrics, Inventory</div>
-                      </div>
-                    </button>
+                    <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium">
+                      {user?.role}
+                    </div>
                   </div>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                </button>
 
-                  <div className="border-t border-slate-100 dark:border-slate-800 pt-2 px-2">
-                    <button
-                      onClick={() => {
-                        logout();
-                        setIsUserMenuOpen(false);
-                      }}
-                      className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 font-medium"
-                    >
-                      <LogOut className="w-3.5 h-3.5" />
-                      Sign Out
-                    </button>
+                {/* Dropdown Menu */}
+                {isUserMenuOpen && (
+                  <div 
+                    className="absolute right-0 mt-2 w-56 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-2"
+                    onMouseLeave={() => setIsUserMenuOpen(false)}
+                  >
+                    <div className="px-4 py-2 border-b border-slate-100 dark:border-slate-800">
+                      <p className="text-xs text-slate-400">Authenticated Profile</p>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white truncate">{user?.email}</p>
+                      <span className="inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        {user?.role}
+                      </span>
+                    </div>
+
+                    <div className="pt-2 px-2">
+                      <button
+                        onClick={() => {
+                          logout();
+                          setIsUserMenuOpen(false);
+                        }}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 font-medium transition-colors"
+                      >
+                        <LogOut className="w-3.5 h-3.5" />
+                        Sign Out
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <Link
+                  href="/login"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-700 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-100 dark:hover:bg-slate-900 transition-colors"
+                >
+                  Sign In
+                </Link>
+                <Link
+                  href="/register"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-600 text-white hover:bg-emerald-500 shadow-sm transition-colors"
+                >
+                  Register
+                </Link>
+              </div>
+            )}
           </div>
         </div>
       </div>

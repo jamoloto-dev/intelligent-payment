@@ -1,11 +1,14 @@
-"""Payment Service business logic layer."""
+"""Payment Service business logic layer with transactional outbox and safe failure handling."""
 
+import asyncio
 import uuid
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
 import httpx
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 
 from services.payment_service.app.config.settings import settings
 from services.payment_service.app.models.payment import Payment
@@ -43,6 +46,22 @@ class PaymentService:
         self.event_bus = event_bus
         self.fraud_client = fraud_client
 
+    def _to_response(self, p: Payment) -> PaymentResponse:
+        return PaymentResponse(
+            id=str(p.id),
+            order_id=str(p.order_id),
+            user_id=str(p.user_id),
+            amount=p.amount,
+            currency=str(p.currency),
+            provider=str(p.provider),
+            provider_transaction_id=p.provider_transaction_id,
+            status=p.status if isinstance(p.status, str) else p.status.value,
+            idempotency_key=p.idempotency_key,
+            failure_reason=p.failure_reason,
+            created_at=p.created_at or datetime.now(UTC),
+            updated_at=p.updated_at or datetime.now(UTC),
+        )
+
     async def _check_fraud(
         self,
         transaction_id: str,
@@ -53,17 +72,27 @@ class PaymentService:
         billing_country: str | None = None,
         client_ip: str | None = None,
     ) -> dict[str, Any]:
-        """Call Fraud Service for risk evaluation."""
+        """Call Fraud Service for risk evaluation with safe review fallback."""
         if self.fraud_client:
-            return await self.fraud_client.check(
-                transaction_id=transaction_id,
-                order_id=order_id,
-                user_id=user_id,
-                amount=amount,
-                currency=currency,
-                billing_country=billing_country,
-                client_ip=client_ip,
-            )
+            try:
+                res = await self.fraud_client.check(
+                    transaction_id=transaction_id,
+                    order_id=order_id,
+                    user_id=user_id,
+                    amount=amount,
+                    currency=currency,
+                    billing_country=billing_country,
+                    client_ip=client_ip,
+                )
+                if isinstance(res, dict) and "decision" in res:
+                    return res
+            except Exception as e:
+                logger.error(f"Injected fraud client error: {e}. Defaulting to REVIEW decision.")
+                return {
+                    "decision": FraudDecision.REVIEW.value,
+                    "risk_score": 85.0,
+                    "reasons": [f"Fraud client failure: {str(e)}"],
+                }
 
         url = f"{settings.FRAUD_SERVICE_URL}/fraud/check"
         async with httpx.AsyncClient(timeout=5.0) as client:
@@ -81,26 +110,50 @@ class PaymentService:
                     },
                 )
                 if resp.status_code == 200:
-                    return resp.json()
+                    data = resp.json()
+                    if isinstance(data, dict) and "decision" in data:
+                        return data
+                    return {
+                        "decision": FraudDecision.REVIEW.value,
+                        "risk_score": 85.0,
+                        "reasons": ["Malformed response payload from fraud service"],
+                    }
+                else:
+                    logger.warning(
+                        f"Fraud service returned status {resp.status_code}. Defaulting to REVIEW."
+                    )
+                    return {
+                        "decision": FraudDecision.REVIEW.value,
+                        "risk_score": 85.0,
+                        "reasons": [f"Fraud service returned HTTP {resp.status_code}"],
+                    }
             except Exception as e:
-                logger.warning(
-                    f"Fraud check communication error: {e}. Falling back to default low-risk evaluation."
+                logger.error(
+                    f"Fraud check communication error: {e}. Defaulting to REVIEW decision for safety."
                 )
-        return {"decision": "APPROVE", "risk_score": 0.0, "reasons": ["Default low risk profile"]}
+                return {
+                    "decision": FraudDecision.REVIEW.value,
+                    "risk_score": 85.0,
+                    "reasons": [f"Fraud service unreachable or timed out: {str(e)}"],
+                }
 
     async def process_payment(
         self,
         user_id: str,
         req: PaymentCreateRequest,
     ) -> PaymentResponse:
-        # 1. Idempotency Check
+        # 1. Idempotency Check (Pre-flight check)
         if req.idempotency_key:
-            existing = await self.repository.get_by_idempotency_key(req.idempotency_key)
+            existing = await self.repository.get_by_user_idempotency(user_id, req.idempotency_key)
+            if not existing:
+                existing = await self.repository.get_by_idempotency_key(req.idempotency_key)
             if existing:
                 logger.info(f"Returning cached payment for idempotency_key {req.idempotency_key}")
-                return PaymentResponse.model_validate(existing)
+                return self._to_response(existing)
 
         tx_id = f"tx_{uuid.uuid4().hex[:12]}"
+        payment_id = f"pay_{uuid.uuid4().hex[:16]}"
+        now = datetime.now(UTC)
 
         # 2. Fraud Evaluation
         fraud_result = await self._check_fraud(
@@ -113,10 +166,13 @@ class PaymentService:
             client_ip=req.client_ip,
         )
 
-        decision = fraud_result.get("decision", "APPROVE")
+        decision = fraud_result.get("decision", FraudDecision.REVIEW.value)
+
+        # 3. Handle Fraud REJECT
         if decision == FraudDecision.REJECT.value:
-            # Payment blocked due to fraud risk
+            reason = f"Payment rejected due to high fraud risk: {', '.join(fraud_result.get('reasons', []))}"
             payment = Payment(
+                id=payment_id,
                 order_id=req.order_id,
                 user_id=user_id,
                 amount=req.amount,
@@ -124,30 +180,109 @@ class PaymentService:
                 provider="stripe" if not settings.USE_MOCK_PAYMENT_PROVIDER else "mock",
                 status=PaymentStatus.FRAUD_REJECTED.value,
                 idempotency_key=req.idempotency_key,
-                failure_reason=f"Payment rejected due to high fraud risk: {', '.join(fraud_result.get('reasons', []))}",
+                failure_reason=reason,
+                created_at=now,
+                updated_at=now,
             )
-            created = await self.repository.create(payment)
+            event = PaymentFailedEvent(
+                payment_id=payment_id,
+                order_id=req.order_id,
+                user_id=user_id,
+                amount=req.amount,
+                currency=payment.currency,
+                provider=payment.provider,
+                reason=reason,
+                user_email=req.user_email,
+            )
+            try:
+                await self.repository.save_payment_with_outbox(
+                    payment=payment,
+                    topic="payments",
+                    event_type="PaymentFailedEvent",
+                    payload=event.model_dump(mode="json"),
+                )
+            except IntegrityError:
+                await self.repository.session.rollback()
+                for _ in range(5):
+                    existing = await self.repository.get_by_user_idempotency(
+                        user_id, req.idempotency_key
+                    )
+                    if not existing:
+                        existing = await self.repository.get_by_idempotency_key(req.idempotency_key)
+                    if existing:
+                        return self._to_response(existing)
+                    await asyncio.sleep(0.05)
+                raise
 
             if self.event_bus:
-                await self.event_bus.publish(
-                    "payments",
-                    PaymentFailedEvent(
-                        payment_id=created.id,
-                        order_id=req.order_id,
-                        user_id=user_id,
-                        amount=req.amount,
-                        currency=created.currency,
-                        provider=created.provider,
-                        reason=created.failure_reason,
-                        user_email=req.user_email,
-                    ),
-                )
+                try:
+                    await self.event_bus.publish("payments", event)
+                except Exception as e:
+                    logger.warning(f"Immediate event publish failed (outbox will deliver): {e}")
+
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"error": "PAYMENT_FRAUD_REJECTED", "message": created.failure_reason},
+                detail={"error": "PAYMENT_FRAUD_REJECTED", "message": reason},
             )
 
-        # 3. Call Payment Provider
+        # 4. Handle Fraud REVIEW / Service Failure
+        if decision == FraudDecision.REVIEW.value:
+            reason = f"Payment held for manual review: {', '.join(fraud_result.get('reasons', []))}"
+            payment = Payment(
+                id=payment_id,
+                order_id=req.order_id,
+                user_id=user_id,
+                amount=req.amount,
+                currency=req.currency or "USD",
+                provider="stripe" if not settings.USE_MOCK_PAYMENT_PROVIDER else "mock",
+                status=PaymentStatus.FAILED.value,
+                idempotency_key=req.idempotency_key,
+                failure_reason=reason,
+                created_at=now,
+                updated_at=now,
+            )
+            event = PaymentFailedEvent(
+                payment_id=payment_id,
+                order_id=req.order_id,
+                user_id=user_id,
+                amount=req.amount,
+                currency=payment.currency,
+                provider=payment.provider,
+                reason=reason,
+                user_email=req.user_email,
+            )
+            try:
+                await self.repository.save_payment_with_outbox(
+                    payment=payment,
+                    topic="payments",
+                    event_type="PaymentFailedEvent",
+                    payload=event.model_dump(mode="json"),
+                )
+            except IntegrityError:
+                await self.repository.session.rollback()
+                for _ in range(5):
+                    existing = await self.repository.get_by_user_idempotency(
+                        user_id, req.idempotency_key
+                    )
+                    if not existing:
+                        existing = await self.repository.get_by_idempotency_key(req.idempotency_key)
+                    if existing:
+                        return self._to_response(existing)
+                    await asyncio.sleep(0.05)
+                raise
+
+            if self.event_bus:
+                try:
+                    await self.event_bus.publish("payments", event)
+                except Exception as e:
+                    logger.warning(f"Immediate event publish failed (outbox will deliver): {e}")
+
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"error": "PAYMENT_UNDER_REVIEW", "message": reason},
+            )
+
+        # 5. Call Payment Provider
         provider_name = "mock" if settings.USE_MOCK_PAYMENT_PROVIDER else "stripe"
         charge_res = await self.provider.create_charge(
             amount=req.amount,
@@ -157,48 +292,82 @@ class PaymentService:
             metadata={"order_id": req.order_id, "user_id": user_id},
         )
 
-        # 4. Save Payment Record
+        # 6. Save Payment Record & Outbox Event Atomically
+        final_status = (
+            PaymentStatus.SUCCEEDED.value if charge_res.success else PaymentStatus.FAILED.value
+        )
         payment = Payment(
+            id=payment_id,
             order_id=req.order_id,
             user_id=user_id,
             amount=req.amount,
             currency=req.currency or "USD",
             provider=provider_name,
             provider_transaction_id=charge_res.transaction_id,
-            status=(
-                PaymentStatus.SUCCEEDED.value if charge_res.success else PaymentStatus.FAILED.value
-            ),
+            status=final_status,
             idempotency_key=req.idempotency_key,
             failure_reason=charge_res.error_message if not charge_res.success else None,
+            created_at=now,
+            updated_at=now,
         )
-        saved = await self.repository.create(payment)
 
-        # 5. Publish Domain Events
+        if charge_res.success:
+            event = PaymentCompletedEvent(
+                payment_id=payment_id,
+                order_id=payment.order_id,
+                user_id=payment.user_id,
+                amount=payment.amount,
+                currency=payment.currency,
+                provider=payment.provider,
+                provider_transaction_id=charge_res.transaction_id,
+                user_email=req.user_email,
+            )
+            event_type = "PaymentCompletedEvent"
+        else:
+            event = PaymentFailedEvent(
+                payment_id=payment_id,
+                order_id=payment.order_id,
+                user_id=payment.user_id,
+                amount=payment.amount,
+                currency=payment.currency,
+                provider=payment.provider,
+                reason=charge_res.error_message or "Payment failed",
+                user_email=req.user_email,
+            )
+            event_type = "PaymentFailedEvent"
+
+        try:
+            await self.repository.save_payment_with_outbox(
+                payment=payment,
+                topic="payments",
+                event_type=event_type,
+                payload=event.model_dump(mode="json"),
+            )
+        except IntegrityError:
+            # Handle concurrency race on (user_id, idempotency_key)
+            logger.warning(
+                f"Idempotency race conflict on user_id={user_id}, idempotency_key={req.idempotency_key}. Retrieving existing record."
+            )
+            await self.repository.session.rollback()
+            for _ in range(5):
+                existing = await self.repository.get_by_user_idempotency(
+                    user_id, req.idempotency_key
+                )
+                if not existing:
+                    existing = await self.repository.get_by_idempotency_key(req.idempotency_key)
+                if existing:
+                    return self._to_response(existing)
+                await asyncio.sleep(0.05)
+            raise
+
+        # Attempt immediate event dispatch (best effort; outbox guarantees delivery)
         if self.event_bus:
-            if charge_res.success:
-                event = PaymentCompletedEvent(
-                    payment_id=saved.id,
-                    order_id=saved.order_id,
-                    user_id=saved.user_id,
-                    amount=saved.amount,
-                    currency=saved.currency,
-                    provider=saved.provider,
-                    provider_transaction_id=charge_res.transaction_id,
-                    user_email=req.user_email,
-                )
+            try:
                 await self.event_bus.publish("payments", event)
-            else:
-                event = PaymentFailedEvent(
-                    payment_id=saved.id,
-                    order_id=saved.order_id,
-                    user_id=saved.user_id,
-                    amount=saved.amount,
-                    currency=saved.currency,
-                    provider=saved.provider,
-                    reason=charge_res.error_message or "Payment failed",
-                    user_email=req.user_email,
+            except Exception as e:
+                logger.warning(
+                    f"Immediate event publish failed (outbox will deliver asynchronously): {e}"
                 )
-                await self.event_bus.publish("payments", event)
 
         if not charge_res.success:
             raise HTTPException(
@@ -209,7 +378,20 @@ class PaymentService:
                 },
             )
 
-        return PaymentResponse.model_validate(saved)
+        return PaymentResponse(
+            id=payment_id,
+            order_id=req.order_id,
+            user_id=user_id,
+            amount=req.amount,
+            currency=req.currency or "USD",
+            provider=provider_name,
+            provider_transaction_id=charge_res.transaction_id,
+            status=final_status,
+            idempotency_key=req.idempotency_key,
+            failure_reason=charge_res.error_message if not charge_res.success else None,
+            created_at=now,
+            updated_at=now,
+        )
 
     async def get_payment(self, payment_id: str) -> PaymentResponse:
         payment = await self.repository.get_by_id(payment_id)
@@ -218,11 +400,11 @@ class PaymentService:
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={"error": "PAYMENT_NOT_FOUND", "message": f"Payment {payment_id} not found"},
             )
-        return PaymentResponse.model_validate(payment)
+        return self._to_response(payment)
 
     async def get_by_order(self, order_id: str) -> list[PaymentResponse]:
         payments = await self.repository.get_by_order_id(order_id)
-        return [PaymentResponse.model_validate(p) for p in payments]
+        return [self._to_response(p) for p in payments]
 
     async def refund_payment(
         self, payment_id: str, user_id: str, is_admin: bool, req: PaymentRefundRequest
@@ -263,19 +445,29 @@ class PaymentService:
             )
 
         payment.status = PaymentStatus.REFUNDED.value
-        updated = await self.repository.update(payment)
+
+        event = PaymentRefundedEvent(
+            payment_id=payment.id,
+            order_id=payment.order_id,
+            user_id=payment.user_id,
+            amount=req.amount or payment.amount,
+            currency=payment.currency,
+            provider=payment.provider,
+            refund_id=refund_res.refund_id,
+        )
+
+        updated = await self.repository.update_payment_with_outbox(
+            payment=payment,
+            topic="payments",
+            event_type="PaymentRefundedEvent",
+            payload=event.model_dump(mode="json"),
+        )
 
         if self.event_bus:
-            event = PaymentRefundedEvent(
-                payment_id=updated.id,
-                order_id=updated.order_id,
-                user_id=updated.user_id,
-                amount=req.amount or updated.amount,
-                currency=updated.currency,
-                provider=updated.provider,
-                refund_id=refund_res.refund_id,
-            )
-            await self.event_bus.publish("payments", event)
+            try:
+                await self.event_bus.publish("payments", event)
+            except Exception as e:
+                logger.warning(f"Immediate refund event publish failed (outbox will deliver): {e}")
 
         logger.info(f"Payment {payment_id} successfully refunded")
-        return PaymentResponse.model_validate(updated)
+        return self._to_response(updated)

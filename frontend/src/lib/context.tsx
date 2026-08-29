@@ -1,13 +1,15 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { User, CartItem, Product } from '@/types';
-import { DEMO_USERS } from './api';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { User, UserRole, CartItem, Product } from '@/types';
+import { apiClient } from './api';
 
 interface AppContextType {
   user: User | null;
   token: string | null;
-  role: 'USER' | 'ADMIN';
+  role: UserRole;
+  isAuthenticated: boolean;
+  isLoadingAuth: boolean;
   cart: CartItem[];
   isCartOpen: boolean;
   setIsCartOpen: (open: boolean) => void;
@@ -17,7 +19,6 @@ interface AppContextType {
   clearCart: () => void;
   cartCount: number;
   cartTotal: number;
-  switchUser: (role: 'USER' | 'ADMIN') => void;
   login: (user: User, token: string) => void;
   logout: () => void;
   toast: { message: string; type: 'success' | 'error' | 'info' } | null;
@@ -27,32 +28,72 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(DEMO_USERS[0]);
-  const [token, setToken] = useState<string | null>('demo_jwt_customer_token');
+  const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [isLoadingAuth, setIsLoadingAuth] = useState<boolean>(true);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState<boolean>(false);
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
-  useEffect(() => {
-    try {
-      const savedCart = localStorage.getItem('ip_cart');
-      if (savedCart) {
-        setCart(JSON.parse(savedCart));
-      }
-      const savedUser = localStorage.getItem('ip_current_user');
-      if (savedUser) {
-        setUser(JSON.parse(savedUser));
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
     setToast({ message, type });
     setTimeout(() => {
       setToast(null);
     }, 4000);
+  }, []);
+
+  const logout = useCallback(() => {
+    setUser(null);
+    setToken(null);
+    apiClient.setToken(null);
+    try {
+      localStorage.removeItem('ip_current_user');
+      document.cookie = 'ip_token=; path=/; max-age=0; SameSite=Lax';
+    } catch {}
+    showToast('Logged out successfully', 'info');
+  }, [showToast]);
+
+  // Initial session hydration
+  useEffect(() => {
+    const initAuth = async () => {
+      try {
+        const savedCart = localStorage.getItem('ip_cart');
+        if (savedCart) {
+          setCart(JSON.parse(savedCart));
+        }
+
+        const savedToken = apiClient.getToken();
+        if (savedToken) {
+          setToken(savedToken);
+          // Validate token with backend authority
+          try {
+            const me = await apiClient.getMe();
+            setUser(me);
+            localStorage.setItem('ip_current_user', JSON.stringify(me));
+            document.cookie = `ip_token=${encodeURIComponent(savedToken)}; path=/; max-age=86400; SameSite=Lax`;
+          } catch {
+            // Token expired or invalid on backend
+            logout();
+          }
+        }
+      } catch {
+        // storage disabled or error
+      } finally {
+        setIsLoadingAuth(false);
+      }
+    };
+
+    initAuth();
+  }, [logout]);
+
+  const login = (newUser: User, newToken: string) => {
+    setUser(newUser);
+    setToken(newToken);
+    apiClient.setToken(newToken);
+    try {
+      localStorage.setItem('ip_current_user', JSON.stringify(newUser));
+      document.cookie = `ip_token=${encodeURIComponent(newToken)}; path=/; max-age=86400; SameSite=Lax`;
+    } catch {}
   };
 
   const saveCartToStorage = (updatedCart: CartItem[]) => {
@@ -97,39 +138,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     saveCartToStorage([]);
   };
 
-  const switchUser = (role: 'USER' | 'ADMIN') => {
-    const selected = DEMO_USERS.find((u) => u.role === role) || DEMO_USERS[0];
-    setUser(selected);
-    const mockToken = `demo_jwt_${role.toLowerCase()}_token`;
-    setToken(mockToken);
-    try {
-      localStorage.setItem('ip_current_user', JSON.stringify(selected));
-      localStorage.setItem('ip_token', mockToken);
-    } catch {
-      // ignore
-    }
-    showToast(`Switched account to: ${selected.first_name} (${selected.role})`, 'info');
-  };
-
-  const login = (newUser: User, newToken: string) => {
-    setUser(newUser);
-    setToken(newToken);
-    try {
-      localStorage.setItem('ip_current_user', JSON.stringify(newUser));
-      localStorage.setItem('ip_token', newToken);
-    } catch {}
-  };
-
-  const logout = () => {
-    setUser(null);
-    setToken(null);
-    try {
-      localStorage.removeItem('ip_current_user');
-      localStorage.removeItem('ip_token');
-    } catch {}
-    showToast('Logged out successfully', 'info');
-  };
-
   const cartCount = cart.reduce((total, item) => total + item.quantity, 0);
   const cartTotal = cart.reduce((total, item) => total + item.product.price * item.quantity, 0);
 
@@ -138,7 +146,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         user,
         token,
-        role: user?.role || 'USER',
+        role: user?.role || 'CUSTOMER',
+        isAuthenticated: !!token && !!user,
+        isLoadingAuth,
         cart,
         isCartOpen,
         setIsCartOpen,
@@ -148,7 +158,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         clearCart,
         cartCount,
         cartTotal,
-        switchUser,
         login,
         logout,
         toast,

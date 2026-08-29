@@ -13,9 +13,20 @@ spec:
       labels:
         app: notification-service
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
       containers:
         - name: notification-service
-          image: intelligentpayment/notification-service:1.0.0
+          image: intelligentpayment/notification-service:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: SERVICE_NAME
               value: "notification-service"
@@ -24,6 +35,11 @@ spec:
                 configMapKeyRef:
                   name: platform-config
                   key: REDIS_URL
+            - name: MONGODB_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: platform-config
+                  key: MONGODB_URL
             - name: JWT_SECRET
               valueFrom:
                 secretKeyRef:
@@ -34,13 +50,20 @@ spec:
           resources:
             requests:
               cpu: "100m"
-              memory: "128Mi"
-            limits:
-              cpu: "400m"
               memory: "256Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8006
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 10
           readinessProbe:
             httpGet:
-              path: /ready
+              path: /health
               port: 8006
             initialDelaySeconds: 5
             periodSeconds: 5

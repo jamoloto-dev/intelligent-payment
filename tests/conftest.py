@@ -17,9 +17,31 @@ os.environ["JWT_ALGORITHM"] = "HS256"
 os.environ["USE_MOCK_PAYMENT_PROVIDER"] = "true"
 
 
+def restore_default_overrides():
+    user_main.app.dependency_overrides[user_main.get_user_service] = (
+        user_main.get_user_service_dependency
+    )
+    product_main.app.dependency_overrides[product_main.get_product_service] = (
+        product_main.get_product_service_dependency
+    )
+    order_main.app.dependency_overrides[order_main.get_order_service] = (
+        order_main.get_order_service_dependency
+    )
+    fraud_main.app.dependency_overrides[fraud_main.get_fraud_service] = (
+        fraud_main.get_fraud_service_dependency
+    )
+    payment_main.app.dependency_overrides[payment_main.get_payment_service] = (
+        payment_main.get_payment_service_dependency
+    )
+    notif_main.app.dependency_overrides[notif_main.get_notification_service] = (
+        notif_main.get_notification_service_dependency
+    )
+
+
 @pytest.fixture(autouse=True)
 def cleanup_overrides():
-    """Ensure clean dependency overrides per test."""
+    """Ensure clean dependency overrides per test while preserving service defaults."""
+    restore_default_overrides()
     yield
     for mod in [
         user_main,
@@ -31,3 +53,4 @@ def cleanup_overrides():
         gateway_main,
     ]:
         mod.app.dependency_overrides.clear()
+    restore_default_overrides()

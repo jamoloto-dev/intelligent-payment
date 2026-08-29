@@ -12,7 +12,7 @@ This guide explains how to deploy the **Intelligent Payment & Order Platform** a
 ### Prerequisites
 - Docker Engine 24.0+
 - Docker Compose v2.20+
-- Python 3.12+ (for local host scripting)
+- Python 3.12+ (for local host development)
 
 ### Steps
 1. Clone the repository and copy the environment configuration:
@@ -45,39 +45,51 @@ This guide explains how to deploy the **Intelligent Payment & Order Platform** a
 
 ## 2. Kubernetes Deployment
 
-The platform provides complete Kubernetes manifests in `k8s/` (`infrastructure/kubernetes/`).
+The platform provides complete, security-hardened Kubernetes manifests under `infrastructure/kubernetes/`.
+
+### Prerequisites
+- Kubernetes cluster 1.28+ (`minikube`, `kind`, `k3s`, or `AKS`)
+- `kubectl` configured to your target cluster context
 
 ### Deployment Steps
 1. Create the dedicated namespace:
    ```bash
-   kubectl apply -f k8s/namespace.yaml
+   kubectl apply -f infrastructure/kubernetes/namespace.yaml
    ```
 2. Apply ConfigMap and Secret manifests:
    ```bash
-   kubectl apply -f k8s/configmap.yaml
-   kubectl apply -f k8s/secret.yaml
+   kubectl apply -f infrastructure/kubernetes/configmap.yaml
+   # For local/staging testing:
+   kubectl apply -f infrastructure/kubernetes/secret.yaml
+   # For production External Secrets Operator with Azure Key Vault:
+   # kubectl apply -f infrastructure/kubernetes/external-secret.yaml
    ```
-3. Deploy persistent data stores:
+3. Apply Network Policies and Autoscaling rules:
    ```bash
-   kubectl apply -f k8s/postgres.yaml
-   kubectl apply -f k8s/redis.yaml
-   kubectl apply -f k8s/mongodb.yaml
+   kubectl apply -f infrastructure/kubernetes/network-policy.yaml
+   kubectl apply -f infrastructure/kubernetes/hpa.yaml
    ```
-4. Deploy the application microservices:
+4. Deploy persistent data stores:
    ```bash
-   kubectl apply -f k8s/user-service.yaml
-   kubectl apply -f k8s/product-service.yaml
-   kubectl apply -f k8s/order-service.yaml
-   kubectl apply -f k8s/fraud-service.yaml
-   kubectl apply -f k8s/payment-service.yaml
-   kubectl apply -f k8s/notification-service.yaml
-   kubectl apply -f k8s/gateway.yaml
+   kubectl apply -f infrastructure/kubernetes/postgres.yaml
+   kubectl apply -f infrastructure/kubernetes/redis.yaml
+   kubectl apply -f infrastructure/kubernetes/mongodb.yaml
    ```
-5. Apply Ingress routing:
+5. Deploy the application microservices:
    ```bash
-   kubectl apply -f k8s/ingress.yaml
+   kubectl apply -f infrastructure/kubernetes/user-service.yaml
+   kubectl apply -f infrastructure/kubernetes/product-service.yaml
+   kubectl apply -f infrastructure/kubernetes/order-service.yaml
+   kubectl apply -f infrastructure/kubernetes/fraud-service.yaml
+   kubectl apply -f infrastructure/kubernetes/payment-service.yaml
+   kubectl apply -f infrastructure/kubernetes/notification-service.yaml
+   kubectl apply -f infrastructure/kubernetes/gateway.yaml
    ```
-6. Verify pod readiness and liveness:
+6. Apply Ingress routing:
+   ```bash
+   kubectl apply -f infrastructure/kubernetes/ingress.yaml
+   ```
+7. Verify pod readiness and liveness:
    ```bash
    kubectl get pods -n intelligent-payment
    kubectl get services -n intelligent-payment
@@ -87,37 +99,38 @@ The platform provides complete Kubernetes manifests in `k8s/` (`infrastructure/k
 
 ## 3. Microsoft Azure Cloud Deployment
 
-The platform is designed to run seamlessly on native Azure services:
+The platform runs on native Azure services provisioned via Bicep Infrastructure as Code (`infrastructure/azure/main.bicep`):
 
-### Architecture Decisions on Azure
+### Architecture on Azure
 1. **Azure Container Apps (ACA)**:
-   - Serverless container orchestration based on Kubernetes (K8s) and KEDA.
-   - Eliminates node management overhead while providing automatic HTTP and event-based scaling down to zero for low-traffic services.
-2. **Azure Database for PostgreSQL (Flexible Server)**:
-   - Managed relational database with automated backups, high availability, and SSL/TLS encryption by default.
-3. **Azure Key Vault**:
-   - Securely stores application secrets (JWT keys, database credentials, Stripe API keys).
-   - Python microservices access secrets securely via Managed Identities with zero credentials in code.
-4. **Azure Table Storage**:
-   - High-speed, cost-effective NoSQL key-value store for tamper-evident compliance audit logs.
-5. **Azure Functions (Python Serverless)**:
-   - Executes asynchronous audit ingestion without provisioning continuous compute.
+   - Serverless microservices running non-root container images with horizontal autoscaling.
+   - User-Assigned Managed Identity (`id-payment-*`) used for passwordless secret resolution from Key Vault and image pulling from ACR.
+2. **Azure Key Vault**:
+   - Stores all application secrets (PostgreSQL administrator password, JWT secret keys, Stripe API keys).
+   - Container Apps reference Key Vault secrets directly via `keyVaultUrl` and Managed Identity RBAC (`Key Vault Secrets User`).
+3. **Azure Database for PostgreSQL (Flexible Server)**:
+   - Managed PostgreSQL 16 server with dedicated databases per service (`user_service_db`, `product_service_db`, `order_service_db`, `payment_service_db`).
+4. **Azure Storage Account**:
+   - Table Storage for immutable audit logging and compliance event records.
+5. **Azure Container Registry (ACR)**:
+   - Private registry storing immutable images tagged with commit SHAs.
 
 ### Step-by-Step Azure Deployment
-1. Log in to Azure CLI:
+1. Log in to Azure CLI and select subscription:
    ```bash
    az login
    az account set --subscription "<your-subscription-id>"
    ```
-2. Run the deployment script:
+2. Execute the automated deployment script:
    ```bash
    export AZURE_RESOURCE_GROUP="rg-intelligent-payment-prod"
    export AZURE_LOCATION="eastus"
+   export AZURE_ENVIRONMENT="prod"
    ./infrastructure/azure/deploy.sh
    ```
-3. Push Docker images to Azure Container Registry (ACR):
-   ```bash
-   az acr login --name <acrLoginServer>
-   docker tag intelligentpayment/api-gateway:1.0.0 <acrLoginServer>/api-gateway:1.0.0
-   docker push <acrLoginServer>/api-gateway:1.0.0
-   ```
+3. The deployment script will:
+   - Ensure the Resource Group exists.
+   - Create Azure Container Registry.
+   - Build and push container images for all 7 microservices tagged with the current commit SHA.
+   - Deploy Bicep templates creating Key Vault, PostgreSQL Flexible Server, Container Apps Environment, and all Container Apps.
+   - Initialize database schemas and export public Gateway URLs and Key Vault endpoints.

@@ -127,6 +127,9 @@ async def test_payment_fraud_rejection():
 
 @pytest.mark.asyncio
 async def test_payment_refund():
+    finance_token = jwt_mgr.create_access_token(
+        user_id="usr_fin_1", email="fin@example.com", role="FINANCE"
+    )
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         charge_res = await ac.post(
@@ -139,7 +142,7 @@ async def test_payment_refund():
         refund_res = await ac.post(
             f"/payments/{pay_id}/refund",
             json={"amount": 80.00, "reason": "Defective item"},
-            headers={"Authorization": f"Bearer {user_token}"},
+            headers={"Authorization": f"Bearer {finance_token}"},
         )
         assert refund_res.status_code == 200
         assert refund_res.json()["status"] == "REFUNDED"

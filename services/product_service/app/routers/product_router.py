@@ -1,4 +1,4 @@
-"""Product service API endpoints."""
+"""Product service API endpoints protected with Granular RBAC."""
 
 from fastapi import APIRouter, Depends, Query, status
 
@@ -10,7 +10,7 @@ from services.product_service.app.schemas.product import (
     StockReservationResponse,
 )
 from services.product_service.app.services.product_service import ProductService
-from shared.authentication.dependencies import require_admin
+from shared.authentication.dependencies import require_permission
 from shared.authentication.jwt import TokenPayload
 from shared.schemas.common import PaginatedResponse
 
@@ -25,10 +25,10 @@ def get_product_service() -> ProductService:
 @product_router.post("", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
 async def create_product(
     req: ProductCreateRequest,
-    current_user: TokenPayload = Depends(require_admin),
+    current_user: TokenPayload = Depends(require_permission("products:create")),
     service: ProductService = Depends(get_product_service),
 ):
-    """Create a new product (Admin only)."""
+    """Create a new product (Operations / Admin)."""
     return await service.create_product(req)
 
 
@@ -40,7 +40,7 @@ async def list_products(
     only_active: bool = Query(True),
     service: ProductService = Depends(get_product_service),
 ):
-    """List products with pagination and search."""
+    """List products with pagination and search (Public / Storefront)."""
     items, total = await service.list_products(
         page=page, page_size=page_size, search=search, only_active=only_active
     )
@@ -67,17 +67,17 @@ async def get_product(
 async def update_product(
     product_id: str,
     req: ProductUpdateRequest,
-    current_user: TokenPayload = Depends(require_admin),
+    current_user: TokenPayload = Depends(require_permission("products:update")),
     service: ProductService = Depends(get_product_service),
 ):
-    """Update product details or inventory (Admin only)."""
+    """Update product details or inventory (Operations / Admin)."""
     return await service.update_product(product_id, req)
 
 
 @product_router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_product(
     product_id: str,
-    current_user: TokenPayload = Depends(require_admin),
+    current_user: TokenPayload = Depends(require_permission("products:update")),
     service: ProductService = Depends(get_product_service),
 ):
     """Delete a product (Admin only)."""

@@ -3,7 +3,7 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -146,9 +146,11 @@ async def health():
 
 
 @app.get("/ready", response_model=HealthCheckResponse, tags=["Health"])
-async def ready():
+async def ready(response: Response):
     db_ok = await check_db_health(engine)
     status_val = HealthStatus.HEALTHY if db_ok else HealthStatus.UNHEALTHY
+    if status_val != HealthStatus.HEALTHY:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return HealthCheckResponse(
         service="user-service",
         status=status_val,

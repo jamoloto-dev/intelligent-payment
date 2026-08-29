@@ -26,7 +26,12 @@ class PaymentCreateRequest(BaseModel):
 
 class PaymentRefundRequest(BaseModel):
     amount: Decimal | None = Field(None, gt=0, description="Optional partial refund amount")
-    reason: str | None = Field(default="Customer requested refund")
+    reason: str = Field(
+        ..., min_length=3, description="Mandatory audit justification for issuing a refund"
+    )
+    idempotency_key: str | None = Field(
+        None, description="Optional idempotency key for the refund operation"
+    )
 
 
 class PaymentResponse(BaseResponse):

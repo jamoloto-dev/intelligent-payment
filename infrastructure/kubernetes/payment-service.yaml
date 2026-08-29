@@ -13,14 +13,45 @@ spec:
       labels:
         app: payment-service
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
       containers:
         - name: payment-service
-          image: intelligentpayment/payment-service:1.0.0
+          image: intelligentpayment/payment-service:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: SERVICE_NAME
               value: "payment-service"
-            - name: DATABASE_URL
-              value: "postgresql+asyncpg://postgres:change_in_production_super_secret_db_password@postgres-service:5432/payment_service_db"
+            - name: POSTGRES_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: platform-config
+                  key: POSTGRES_HOST
+            - name: POSTGRES_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: platform-config
+                  key: POSTGRES_PORT
+            - name: POSTGRES_DB
+              value: "payment_service_db"
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: platform-secrets
+                  key: POSTGRES_USER
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: platform-secrets
+                  key: POSTGRES_PASSWORD
             - name: REDIS_URL
               valueFrom:
                 configMapKeyRef:
@@ -65,9 +96,16 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8005
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 10
           readinessProbe:
             httpGet:
-              path: /ready
+              path: /health
               port: 8005
             initialDelaySeconds: 5
             periodSeconds: 5

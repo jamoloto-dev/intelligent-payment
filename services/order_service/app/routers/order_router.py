@@ -1,4 +1,4 @@
-"""Order service API endpoints."""
+"""Order service API endpoints protected with Granular RBAC."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
@@ -10,10 +10,12 @@ from services.order_service.app.schemas.order import (
 )
 from services.order_service.app.services.order_service import OrderService
 from shared.authentication.dependencies import (
+    get_user_permissions,
     require_authenticated,
+    require_permission,
 )
 from shared.authentication.jwt import TokenPayload
-from shared.schemas.common import PaginatedResponse, UserRole
+from shared.schemas.common import PaginatedResponse
 
 order_router = APIRouter(prefix="/orders", tags=["Orders"])
 
@@ -26,7 +28,7 @@ def get_order_service() -> OrderService:
 @order_router.post("", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 async def create_order(
     req: OrderCreateRequest,
-    current_user: TokenPayload = Depends(require_authenticated),
+    current_user: TokenPayload = Depends(require_permission("orders:create")),
     service: OrderService = Depends(get_order_service),
 ):
     """Create a new order and reserve product inventory."""
@@ -45,8 +47,11 @@ async def list_orders(
     current_user: TokenPayload = Depends(require_authenticated),
     service: OrderService = Depends(get_order_service),
 ):
-    """List orders for current user, or all orders for Admin."""
-    user_id = None if current_user.role == UserRole.ADMIN.value else current_user.sub
+    """List orders for current user, or all orders for Support/Finance/Operations/Admin."""
+    perms = get_user_permissions(current_user)
+    can_read_all = "*" in perms or "orders:read_all" in perms
+
+    user_id = None if can_read_all else current_user.sub
     items, total = await service.list_orders(
         user_id=user_id, status_filter=status_filter, page=page, page_size=page_size
     )
@@ -66,12 +71,15 @@ async def get_order(
     current_user: TokenPayload = Depends(require_authenticated),
     service: OrderService = Depends(get_order_service),
 ):
-    """Get order details by ID."""
+    """Get order details by ID with strict ownership/permission validation."""
     order = await service.get_order(order_id)
-    if current_user.role != UserRole.ADMIN.value and order.user_id != current_user.sub:
+    perms = get_user_permissions(current_user)
+
+    is_authorized = "*" in perms or "orders:read_all" in perms or order.user_id == current_user.sub
+    if not is_authorized:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail={"error": "FORBIDDEN", "message": "Access denied to this order"},
+            detail={"error": "FORBIDDEN", "message": "Access denied to this order record"},
         )
     return order
 
@@ -85,7 +93,10 @@ async def update_order(
 ):
     """Update order details."""
     order = await service.get_order(order_id)
-    if current_user.role != UserRole.ADMIN.value and order.user_id != current_user.sub:
+    perms = get_user_permissions(current_user)
+
+    is_authorized = "*" in perms or "orders:read_all" in perms or order.user_id == current_user.sub
+    if not is_authorized:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"error": "FORBIDDEN", "message": "Access denied to modify this order"},
@@ -100,7 +111,8 @@ async def cancel_order(
     service: OrderService = Depends(get_order_service),
 ):
     """Cancel an active order and release inventory."""
-    is_admin = current_user.role == UserRole.ADMIN.value
+    perms = get_user_permissions(current_user)
+    is_admin = "*" in perms or "orders:read_all" in perms
     return await service.cancel_order(
         order_id=order_id, user_id=current_user.sub, is_admin=is_admin
     )

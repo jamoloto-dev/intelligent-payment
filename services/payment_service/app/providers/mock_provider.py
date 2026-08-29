@@ -83,6 +83,8 @@ class MockPaymentProvider(PaymentProviderInterface):
         return res
 
     def verify_webhook(self, payload: bytes, signature_header: str) -> dict[str, Any]:
+        if not signature_header or "invalid" in signature_header.lower():
+            raise ValueError("Invalid webhook signature")
         return {
             "id": f"evt_mock_{uuid.uuid4().hex[:8]}",
             "type": "payment_intent.succeeded",

@@ -13,9 +13,20 @@ spec:
       labels:
         app: fraud-service
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
       containers:
         - name: fraud-service
-          image: intelligentpayment/fraud-service:1.0.0
+          image: intelligentpayment/fraud-service:latest
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: SERVICE_NAME
               value: "fraud-service"
@@ -38,14 +49,21 @@ spec:
             - containerPort: 8004
           resources:
             requests:
-              cpu: "150m"
+              cpu: "100m"
               memory: "256Mi"
             limits:
               cpu: "500m"
               memory: "512Mi"
+          startupProbe:
+            httpGet:
+              path: /health
+              port: 8004
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            failureThreshold: 10
           readinessProbe:
             httpGet:
-              path: /ready
+              path: /health
               port: 8004
             initialDelaySeconds: 5
             periodSeconds: 5

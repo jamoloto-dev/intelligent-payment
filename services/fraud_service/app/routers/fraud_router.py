@@ -1,11 +1,11 @@
-"""Fraud Service API endpoints."""
+"""Fraud Service API endpoints protected with Granular RBAC."""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from services.fraud_service.app.schemas.fraud import FraudCheckRequest, FraudCheckResponse
 from services.fraud_service.app.services.fraud_service import FraudService
 from services.fraud_service.app.storage.storage import FraudStorage
-from shared.authentication.dependencies import require_admin
+from shared.authentication.dependencies import require_permission
 from shared.authentication.jwt import TokenPayload
 
 fraud_router = APIRouter(prefix="/fraud", tags=["Fraud Detection"])
@@ -23,17 +23,17 @@ async def check_fraud(
     req: FraudCheckRequest,
     service: FraudService = Depends(get_fraud_service),
 ):
-    """Evaluate payment transaction for potential fraud risk."""
+    """Evaluate payment transaction for potential fraud risk (Internal/Service)."""
     return await service.evaluate_transaction(req)
 
 
 @fraud_router.get("/evaluations", response_model=list[FraudCheckResponse])
 async def list_fraud_evaluations(
     limit: int = Query(50, ge=1, le=200),
-    current_user: TokenPayload = Depends(require_admin),
+    current_user: TokenPayload = Depends(require_permission("fraud:read_all")),
     service: FraudService = Depends(get_fraud_service),
 ):
-    """List recent fraud evaluations (Admin only)."""
+    """List recent fraud evaluations (Fraud Analyst / Admin)."""
     return await service.list_evaluations(limit=limit)
 
 

@@ -26,37 +26,17 @@ export default function OrderTrackingPage() {
   useEffect(() => {
     async function loadOrder() {
       try {
-        const orders = await apiClient.getOrders();
-        const found = orders.find((o) => o.id === orderId);
-        if (found) {
-          setOrder(found);
-        } else {
-          setOrder({
-            id: orderId,
-            user_id: 'usr-customer-01',
-            status: 'PAID',
-            total_amount: 599.98,
-            currency: 'USD',
-            shipping_address: '123 Silicon Valley Blvd, Suite 400, San Jose, CA',
-            items: [
-              {
-                product_id: 'prod-001',
-                product_name: 'Quantum Sound ANC Headphones',
-                quantity: 2,
-                unit_price: 299.99,
-                subtotal: 599.98,
-              },
-            ],
-            created_at: new Date().toISOString(),
-          });
-        }
+        const found = await apiClient.getOrderById(orderId);
+        setOrder(found);
       } catch (err) {
-        console.error(err);
+        console.error('Failed to retrieve order from backend:', err);
       } finally {
         setLoading(false);
       }
     }
-    loadOrder();
+    if (orderId) {
+      loadOrder();
+    }
   }, [orderId]);
 
   if (loading) {

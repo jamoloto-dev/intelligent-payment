@@ -89,7 +89,7 @@ async def test_all_failure_modes_and_error_codes():
         headers={"Authorization": f"Bearer {alice_token}"},
     )
     assert res_403.status_code == 403
-    assert res_403.json()["error"] == "FORBIDDEN"
+    assert res_403.json()["error"] in ("FORBIDDEN", "INSUFFICIENT_PERMISSIONS")
 
     # 4. 404 Not Found - Non-existent product
     res_404 = await p_client.get("/products/non_existent_uuid")

@@ -1,14 +1,16 @@
 """Payment Service main FastAPI application entrypoint."""
 
+import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from services.payment_service.app.config.settings import settings
+from services.payment_service.app.events.outbox_processor import OutboxProcessor
 from services.payment_service.app.providers.mock_provider import MockPaymentProvider
 from services.payment_service.app.providers.stripe_provider import StripePaymentProvider
 from services.payment_service.app.repositories.payment_repository import PaymentRepository
@@ -28,6 +30,7 @@ logger = get_logger("payment-service")
 engine = create_db_engine(settings.DATABASE_URL, echo=settings.DEBUG)
 SessionLocal = create_session_factory(engine)
 event_bus = EventBus(redis_url=settings.REDIS_URL)
+outbox_processor = OutboxProcessor(session_factory=SessionLocal, event_bus=event_bus)
 
 # Provider initialization
 if settings.USE_MOCK_PAYMENT_PROVIDER or not settings.STRIPE_SECRET_KEY.startswith("sk_"):
@@ -47,9 +50,18 @@ async def lifespan(app: FastAPI):
     logger.info("Payment Service database tables initialized")
 
     await event_bus.connect()
+    outbox_task = asyncio.create_task(outbox_processor.start(poll_interval_seconds=2.0))
+
     yield
 
     logger.info("Shutting down Payment Service...")
+    outbox_processor.stop()
+    outbox_task.cancel()
+    try:
+        await outbox_task
+    except asyncio.CancelledError:
+        pass
+
     await event_bus.disconnect()
     await engine.dispose()
 
@@ -145,10 +157,12 @@ async def health():
 
 
 @app.get("/ready", response_model=HealthCheckResponse, tags=["Health"])
-async def ready():
+async def ready(response: Response):
     db_ok = await check_db_health(engine)
     redis_ok = event_bus._running
     status_val = HealthStatus.HEALTHY if (db_ok and redis_ok) else HealthStatus.DEGRADED
+    if status_val != HealthStatus.HEALTHY:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
     return HealthCheckResponse(
         service="payment-service",
         status=status_val,

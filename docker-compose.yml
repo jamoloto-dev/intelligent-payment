@@ -14,7 +14,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-intelligent_payment_db}
       POSTGRES_DATABASES: user_service_db,product_service_db,order_service_db,payment_service_db
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./infrastructure/docker/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh:ro
@@ -31,7 +31,7 @@ services:
     container_name: ip_redis
     restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis_data:/data
     healthcheck:
@@ -205,6 +205,8 @@ services:
       - FRAUD_SERVICE_URL=http://fraud-service:8004
       - PAYMENT_SERVICE_URL=http://payment-service:8005
       - NOTIFICATION_SERVICE_URL=http://notification-service:8006
+      - REDIS_URL=redis://redis:6379/0
+      - CORS_ORIGINS=http://localhost:3000,http://127.0.0.1:3000
       - RATE_LIMIT_REQUESTS_PER_MINUTE=120
       - JWT_SECRET=${JWT_SECRET:-super_secret_jwt_key_for_development_purposes_min32chars}
     ports:

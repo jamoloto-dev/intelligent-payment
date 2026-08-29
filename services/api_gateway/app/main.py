@@ -3,7 +3,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 
 from services.api_gateway.app.config.settings import settings
@@ -44,18 +44,20 @@ app = FastAPI(
     },
 )
 
-# CORS Middleware
+# CORS Middleware - Explicit allowed origins per environment
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"],
     allow_headers=["*"],
 )
 
-# Request Logging & Rate Limiting
+# Request Logging & Distributed Rate Limiting
 app.add_middleware(
-    RateLimitMiddleware, max_requests_per_minute=settings.RATE_LIMIT_REQUESTS_PER_MINUTE
+    RateLimitMiddleware,
+    max_requests_per_minute=settings.RATE_LIMIT_REQUESTS_PER_MINUTE,
+    redis_url=settings.REDIS_URL,
 )
 app.add_middleware(RequestLoggingMiddleware, service_name=settings.SERVICE_NAME)
 
@@ -67,7 +69,7 @@ async def health():
 
 
 @app.get("/ready", response_model=HealthCheckResponse, tags=["Health"])
-async def ready():
+async def ready(response: Response):
     services_to_check = {
         "user-service": f"{settings.USER_SERVICE_URL}/health",
         "product-service": f"{settings.PRODUCT_SERVICE_URL}/health",
@@ -90,6 +92,9 @@ async def ready():
 
     all_reachable = all(v == "reachable" for v in results.values())
     status_val = HealthStatus.HEALTHY if all_reachable else HealthStatus.DEGRADED
+
+    if status_val != HealthStatus.HEALTHY:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
 
     return HealthCheckResponse(
         service="api-gateway",
